@@ -14,6 +14,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(hero_audio_core
+  src/audio/wav_reader.cpp
   src/fft/reference_backend.cpp
   src/fft/backend_factory.cpp
 )
@@ -51,4 +52,8 @@ if(HERO_AUDIO_BUILD_TESTS)
   add_executable(hero_audio_tests tests/test_fft.cpp)
   target_link_libraries(hero_audio_tests PRIVATE HEROAudio::core)
   add_test(NAME fft_correctness COMMAND hero_audio_tests)
+
+  add_executable(wav_reader_tests tests/test_wav_reader.cpp)
+  target_link_libraries(wav_reader_tests PRIVATE HEROAudio::core)
+  add_test(NAME wav_reader_correctness COMMAND wav_reader_tests)
 endif()
