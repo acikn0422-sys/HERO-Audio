@@ -1,0 +1,15 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  macos-correctness:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install cmake ninja pkg-config fftw
+      - run: cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Release -DHERO_AUDIO_REQUIRE_FFTW=ON
+      - run: cmake --build build/ci
+      - run: ctest --test-dir build/ci --output-on-failure

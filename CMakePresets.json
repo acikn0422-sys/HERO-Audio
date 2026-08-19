@@ -1,0 +1,68 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "macos-arm64-dev",
+      "displayName": "macOS Apple Silicon development",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/macos-arm64-dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HERO_AUDIO_ENABLE_FFTW": "ON",
+        "HERO_AUDIO_REQUIRE_FFTW": "OFF",
+        "HERO_AUDIO_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "macos-arm64-release",
+      "displayName": "macOS Apple Silicon official CPU baseline",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/macos-arm64-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "HERO_AUDIO_ENABLE_FFTW": "ON",
+        "HERO_AUDIO_REQUIRE_FFTW": "ON",
+        "HERO_AUDIO_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "portable-reference",
+      "displayName": "Portable reference-only build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/portable-reference",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HERO_AUDIO_ENABLE_FFTW": "OFF",
+        "HERO_AUDIO_BUILD_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "macos-arm64-dev", "configurePreset": "macos-arm64-dev" },
+    { "name": "macos-arm64-release", "configurePreset": "macos-arm64-release" },
+    { "name": "portable-reference", "configurePreset": "portable-reference" }
+  ],
+  "testPresets": [
+    {
+      "name": "macos-arm64-dev",
+      "configurePreset": "macos-arm64-dev",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "macos-arm64-release",
+      "configurePreset": "macos-arm64-release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "portable-reference",
+      "configurePreset": "portable-reference",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

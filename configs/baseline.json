@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "audio": {
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "sample_format": "float32"
+  },
+  "analysis": {
+    "frame_size_samples": 1024,
+    "hop_size_samples": 256,
+    "window": "hann",
+    "threshold_mode": "causal",
+    "threshold_history_frames": 16
+  },
+  "evaluation": {
+    "matching_tolerance_ms": 50,
+    "matching_objective": "max_cardinality_then_min_total_absolute_error"
+  },
+  "benchmark": {
+    "warmup_runs": 3,
+    "measured_runs": 5,
+    "include_plan_creation_in_steady_state": false,
+    "report_percentiles": [50, 95, 99]
+  }
+}
