@@ -41,6 +41,23 @@
 
 检测延迟计算不得用 center time 替代 available time；两者之差体现约半帧的算法缓冲下限。
 
+## Causal threshold 与 peak picking
+
+帧 `t` 的阈值只使用此前最多 16 帧 `[max(0,t-16), t)`，不包含当前帧：
+
+```text
+threshold[t] = mean(history) + 1.5 × population_stddev(history)
+```
+
+当前 flux 必须严格大于 threshold 和 minimum flux，并且不小于左邻帧。候选帧等待一个右邻帧；
+只有候选 flux 严格大于右邻帧才确认。若右邻 flux 相等，同一候选沿平台向后移动并保留首次跨越
+阈值时的 threshold，因此平台峰选择最后一帧。确认至少增加一个 hop 的 lookahead；长度超过一帧的
+平台会增加相应等待时间。
+30 ms refractory 内使用“先确认峰优先”，不等待未来更强峰；这种策略保持低延迟且可真正流式执行。
+
+onset time 使用候选帧 center，emitted time 使用右邻确认帧 available。算法延迟为两者之差；在
+48 kHz、frame 1024、hop 256 下，固定结构延迟为约 16 ms（半帧 10.67 ms 加一 hop 5.33 ms）。
+
 ## FFT 公平性
 
 - 正式 CPU baseline：FFTW3 单精度 `fftw3f`；

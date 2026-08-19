@@ -42,6 +42,7 @@ ctest --preset macos-arm64-dev
 ```bash
 ./build/macos-arm64-dev/hero-audio path/to/input.wav
 ./build/macos-arm64-dev/hero-audio path/to/input.wav results/raw/spectral-flux.csv
+./build/macos-arm64-dev/hero-audio path/to/input.wav results/raw/spectral-flux.csv results/raw/onsets.csv
 ```
 
 当前 WAV reader 支持 little-endian RIFF/WAVE、整数 PCM 8/16/24/32-bit、IEEE float32
@@ -51,6 +52,11 @@ ctest --preset macos-arm64-dev
 Spectral Flux 默认使用 frame size 1024、hop size 256 和对称 Hann window。只处理完整帧，不对
 尾部进行隐式补零。CSV 分别记录 frame start、center 和数据完整可用时刻；第一帧因为没有前一帧，
 flux 固定为零。构建中存在 FFTW3f 时 CLI 优先使用 FFTW，否则使用 reference backend。
+
+Causal onset detector 只使用当前帧之前最多 16 帧计算 `mean + 1.5 × population_stddev`
+阈值，并等待一个右侧帧确认局部最大值。默认 refractory 为 30 ms；实时状态机采用先确认峰优先，
+不会为等待 refractory 内更强峰而增加额外输出延迟。onset CSV 同时记录信号时间、实际发出时间和
+算法延迟。
 
 正式 CPU 基准使用 release preset；它会在 FFTW3f 缺失时直接失败，避免误用参考 FFT：
 
@@ -68,7 +74,7 @@ ctest --preset macos-arm64-release
 include/hero_audio/       公共 C++ 接口
 src/fft/                  FFT 后端实现与工厂
 src/audio/                WAV 解码与 mono 转换
-src/dsp/                  Hann、分帧与 Spectral Flux
+src/dsp/                  Hann、分帧、Spectral Flux 与 causal onset
 tests/                    正确性测试
 configs/                  版本化实验配置
 docs/                     指标与实验协议

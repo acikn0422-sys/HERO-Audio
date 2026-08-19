@@ -10,7 +10,12 @@
     "hop_size_samples": 256,
     "window": "hann",
     "threshold_mode": "causal",
-    "threshold_history_frames": 16
+    "threshold_history_frames": 16,
+    "threshold_stddev_multiplier": 1.5,
+    "threshold_offset": 0.0,
+    "minimum_flux": 0.0,
+    "peak_confirmation_lookahead_frames": 1,
+    "refractory_ms": 30.0
   },
   "evaluation": {
     "matching_tolerance_ms": 50,

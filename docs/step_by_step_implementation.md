@@ -392,13 +392,13 @@ git push
 1. 基础 PCM/float WAV reader；
 2. mono float32 转换；
 3. frame/hop 和 Hann window；
-4. FFT magnitude、Spectral Flux 与 CSV。
+4. FFT magnitude、Spectral Flux 与 CSV；
+5. causal adaptive threshold、peak picking 与 onset CSV。
 
 下一阶段按顺序实现：
 
-1. causal adaptive threshold；
-2. peak picking；
-3. 最优一对一 onset matching；
-4. onset CSV/JSON、整文件计时和第一张通量图。
+1. 最优一对一 onset matching；
+2. Precision、Recall 与 F1；
+3. 整文件计时和第一张通量图。
 
 上述闭环完成以前，不开始 CUDA、AI、FPGA 或运营优化模型。
