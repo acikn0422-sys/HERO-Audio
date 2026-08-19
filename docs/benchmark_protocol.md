@@ -27,6 +27,20 @@
 
 正式实现使用确定性的动态规划或等价的最优二分图匹配，不使用依赖输入顺序的贪心匹配。
 
+## 分帧与 Spectral Flux 时间语义
+
+离线基线从 `frame_index × hop_size` 开始取长度为 `frame_size` 的完整帧。文件末尾不足一帧的样本
+不做隐式补零；若实验需要补零，必须使用新的版本化配置并单独标记。默认 Hann window 为长度 1024
+的对称形式，Spectral Flux 为当前帧与前一帧各频点 magnitude 正向差值之和，第一帧固定为零。
+
+每个通量样本同时保存三个时间：
+
+- `frame_start_seconds`：窗口第一个采样的时间；
+- `frame_center_seconds`：窗口中心对应时间，用作候选 onset 的初始时间参考；
+- `available_seconds`：完整窗口最后一个采样到达后的可计算时间边界。
+
+检测延迟计算不得用 center time 替代 available time；两者之差体现约半帧的算法缓冲下限。
+
 ## FFT 公平性
 
 - 正式 CPU baseline：FFTW3 单精度 `fftw3f`；

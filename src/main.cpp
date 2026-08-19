@@ -1,13 +1,15 @@
 #include "hero_audio/fft_backend.hpp"
+#include "hero_audio/spectral_flux.hpp"
 #include "hero_audio/wav_reader.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <iomanip>
 #include <iostream>
 
 int main(int argc, char **argv) {
-  if (argc > 2) {
-    std::cerr << "Usage: hero-audio [input.wav]\n";
+  if (argc > 3) {
+    std::cerr << "Usage: hero-audio [input.wav] [spectral-flux.csv]\n";
     return 2;
   }
 
@@ -16,15 +18,37 @@ int main(int argc, char **argv) {
     std::cout << "  - " << hero_audio::backend_name(backend) << '\n';
   }
 
-  if (argc == 2) {
+  if (argc >= 2) {
     try {
       const auto audio = hero_audio::read_wav(argv[1]);
+      auto backend_kind = hero_audio::FFTBackendKind::Reference;
+      for (const auto available : hero_audio::available_fft_backends()) {
+        if (available == hero_audio::FFTBackendKind::FFTW) {
+          backend_kind = available;
+        }
+      }
+      auto fft = hero_audio::make_fft_backend(backend_kind, 1024);
+      const auto flux =
+          hero_audio::compute_spectral_flux(audio.mono_samples, audio.sample_rate_hz, *fft);
+      const auto maximum = std::max_element(
+          flux.begin(), flux.end(), [](const auto &left, const auto &right) {
+            return left.spectral_flux < right.spectral_flux;
+          });
       std::cout << "WAV input:\n"
                 << "  sample_rate_hz: " << audio.sample_rate_hz << '\n'
                 << "  source_channels: " << audio.source_channels << '\n'
                 << "  mono_samples: " << audio.mono_samples.size() << '\n'
                 << "  duration_seconds: " << std::fixed << std::setprecision(6)
-                << audio.duration_seconds() << '\n';
+                << audio.duration_seconds() << '\n'
+                << "Spectral Flux:\n"
+                << "  backend: " << fft->name() << '\n'
+                << "  frames: " << flux.size() << '\n'
+                << "  maximum: "
+                << (maximum == flux.end() ? 0.0F : maximum->spectral_flux) << '\n';
+      if (argc == 3) {
+        hero_audio::write_spectral_flux_csv(argv[2], flux);
+        std::cout << "  csv: " << argv[2] << '\n';
+      }
     } catch (const std::exception &error) {
       std::cerr << "Error: " << error.what() << '\n';
       return 1;

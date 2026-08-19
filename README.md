@@ -37,15 +37,20 @@ ctest --preset macos-arm64-dev
 ./build/macos-arm64-dev/hero-audio
 ```
 
-读取一个 WAV 并验证元数据与 mono 解码：
+读取 WAV、转换为 mono float32 并计算 Spectral Flux：
 
 ```bash
 ./build/macos-arm64-dev/hero-audio path/to/input.wav
+./build/macos-arm64-dev/hero-audio path/to/input.wav results/raw/spectral-flux.csv
 ```
 
 当前 WAV reader 支持 little-endian RIFF/WAVE、整数 PCM 8/16/24/32-bit、IEEE float32
 以及 WAVE_FORMAT_EXTENSIBLE 中对应的 PCM/float 子格式。多声道输入按算术平均转换为 mono float32；
 当前阶段不进行重采样。
+
+Spectral Flux 默认使用 frame size 1024、hop size 256 和对称 Hann window。只处理完整帧，不对
+尾部进行隐式补零。CSV 分别记录 frame start、center 和数据完整可用时刻；第一帧因为没有前一帧，
+flux 固定为零。构建中存在 FFTW3f 时 CLI 优先使用 FFTW，否则使用 reference backend。
 
 正式 CPU 基准使用 release preset；它会在 FFTW3f 缺失时直接失败，避免误用参考 FFT：
 
@@ -62,6 +67,8 @@ ctest --preset macos-arm64-release
 ```text
 include/hero_audio/       公共 C++ 接口
 src/fft/                  FFT 后端实现与工厂
+src/audio/                WAV 解码与 mono 转换
+src/dsp/                  Hann、分帧与 Spectral Flux
 tests/                    正确性测试
 configs/                  版本化实验配置
 docs/                     指标与实验协议
