@@ -4,6 +4,7 @@ build-*/
 .cache/
 compile_commands.json
 work/
+/outputs/
 results/raw/*
 !results/raw/.gitkeep
 results/processed/*
