@@ -37,6 +37,16 @@ ctest --preset macos-arm64-dev
 ./build/macos-arm64-dev/hero-audio
 ```
 
+读取一个 WAV 并验证元数据与 mono 解码：
+
+```bash
+./build/macos-arm64-dev/hero-audio path/to/input.wav
+```
+
+当前 WAV reader 支持 little-endian RIFF/WAVE、整数 PCM 8/16/24/32-bit、IEEE float32
+以及 WAVE_FORMAT_EXTENSIBLE 中对应的 PCM/float 子格式。多声道输入按算术平均转换为 mono float32；
+当前阶段不进行重采样。
+
 正式 CPU 基准使用 release preset；它会在 FFTW3f 缺失时直接失败，避免误用参考 FFT：
 
 ```bash
