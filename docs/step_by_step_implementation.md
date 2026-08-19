@@ -384,18 +384,21 @@ git push
 当前闭环是：
 
 ```text
-依赖安装 → CMake 配置 → FFTW/reference 编译 → 两类 FFT 测试 → Release 可复现构建
+依赖安装 → WAV/mono float32 → frame/hop → Hann → FFT magnitude → Spectral Flux CSV
 ```
 
-下一阶段建议按顺序实现：
+已经完成：
 
-1. 基础 PCM WAV reader；
+1. 基础 PCM/float WAV reader；
 2. mono float32 转换；
 3. frame/hop 和 Hann window；
-4. FFT magnitude 与 Spectral Flux；
-5. causal adaptive threshold；
-6. peak picking；
-7. 最优一对一 onset matching；
-8. CSV/JSON、整文件计时和第一张通量图。
+4. FFT magnitude、Spectral Flux 与 CSV。
+
+下一阶段按顺序实现：
+
+1. causal adaptive threshold；
+2. peak picking；
+3. 最优一对一 onset matching；
+4. onset CSV/JSON、整文件计时和第一张通量图。
 
 上述闭环完成以前，不开始 CUDA、AI、FPGA 或运营优化模型。
