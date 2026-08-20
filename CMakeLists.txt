@@ -17,6 +17,7 @@ add_library(hero_audio_core
   src/audio/wav_reader.cpp
   src/dsp/causal_onset.cpp
   src/dsp/spectral_flux.cpp
+  src/evaluation/onset_evaluation.cpp
   src/fft/reference_backend.cpp
   src/fft/backend_factory.cpp
 )
@@ -49,6 +50,9 @@ endif()
 add_executable(hero-audio src/main.cpp)
 target_link_libraries(hero-audio PRIVATE HEROAudio::core)
 
+add_executable(hero-audio-eval src/evaluate_main.cpp)
+target_link_libraries(hero-audio-eval PRIVATE HEROAudio::core)
+
 if(HERO_AUDIO_BUILD_TESTS)
   include(CTest)
   add_executable(hero_audio_tests tests/test_fft.cpp)
@@ -66,4 +70,19 @@ if(HERO_AUDIO_BUILD_TESTS)
   add_executable(causal_onset_tests tests/test_causal_onset.cpp)
   target_link_libraries(causal_onset_tests PRIVATE HEROAudio::core)
   add_test(NAME causal_onset_correctness COMMAND causal_onset_tests)
+
+  add_executable(onset_evaluation_tests tests/test_onset_evaluation.cpp)
+  target_link_libraries(onset_evaluation_tests PRIVATE HEROAudio::core)
+  add_test(NAME onset_evaluation_correctness COMMAND onset_evaluation_tests)
+
+  add_test(
+    NAME onset_evaluation_cli
+    COMMAND hero-audio-eval
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/evaluation_predictions.csv
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/evaluation_references.csv
+      --tolerance-ms 50
+  )
+  set_tests_properties(onset_evaluation_cli PROPERTIES
+    PASS_REGULAR_EXPRESSION "f1: 0.800000"
+  )
 endif()
