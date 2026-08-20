@@ -138,7 +138,7 @@ bool test_zero_denominators_return_zero() {
 
 bool test_csv_reader() {
   std::istringstream predictions(
-      "frame_index,onset_time_seconds,emitted_at_seconds\n3,0.125,0.141\n7,0.500,0.516\n");
+      "frame_index,onset_time_seconds,emitted_at_seconds\n3,0.125,0.141\n7,5.00e-1,0.516\n");
   const auto values = hero_audio::read_onset_times_csv(predictions);
   std::istringstream references("0.125\n\n0.500\n");
   const auto plain_values = hero_audio::read_onset_times_csv(references);

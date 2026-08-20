@@ -1,16 +1,16 @@
 #include "hero_audio/onset_evaluation.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <locale>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <system_error>
 #include <utility>
 
 namespace hero_audio {
@@ -98,10 +98,17 @@ struct Cell {
   if (text.empty()) {
     return false;
   }
-  const auto result =
-      std::from_chars(text.data(), text.data() + text.size(), value, std::chars_format::general);
-  return result.ec == std::errc{} && result.ptr == text.data() + text.size() &&
-         std::isfinite(value) && value >= 0.0;
+  try {
+    // Xcode 15's libc++ does not provide floating-point std::from_chars.
+    // classic() keeps the on-disk decimal format independent of the user's
+    // macOS locale, while noskipws rejects any untrimmed internal characters.
+    std::istringstream parser{std::string(text)};
+    parser.imbue(std::locale::classic());
+    parser >> std::noskipws >> value;
+    return parser && parser.eof() && std::isfinite(value) && value >= 0.0;
+  } catch (...) {
+    return false;
+  }
 }
 
 void require_valid_times(std::span<const double> times, std::string_view name) {

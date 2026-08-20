@@ -1,16 +1,16 @@
 #include "hero_audio/onset_evaluation.hpp"
 
-#include <charconv>
 #include <cmath>
 #include <exception>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <locale>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
 
 namespace {
 
@@ -24,10 +24,10 @@ struct Arguments {
 
 double parse_nonnegative_number(std::string_view text, std::string_view option) {
   double value = 0.0;
-  const auto result =
-      std::from_chars(text.data(), text.data() + text.size(), value, std::chars_format::general);
-  if (result.ec != std::errc{} || result.ptr != text.data() + text.size() ||
-      !std::isfinite(value) || value < 0.0) {
+  std::istringstream parser{std::string(text)};
+  parser.imbue(std::locale::classic());
+  parser >> std::noskipws >> value;
+  if (!parser || !parser.eof() || !std::isfinite(value) || value < 0.0) {
     throw std::invalid_argument(std::string(option) + " requires a non-negative number");
   }
   return value;
