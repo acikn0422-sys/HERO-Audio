@@ -14,8 +14,30 @@
 `P95(hop compute) < 5.333 ms`。流式检测使用只依赖当前及历史帧的 causal threshold，初始目标为
 `P95(detection delay) < 30 ms`。音频设备、操作系统和驱动延迟单独报告，不计入算法延迟。
 
-整段文件同时报告 median、P95、P99、吞吐量和 real-time factor。所有分位数从独立 measured runs
-计算；warm-up 和初始化样本不得进入 steady-state 统计。
+整段文件同时报告 median、P95、P99 和 real-time factor。正式实现把 FFT backend/plan 创建放在
+计时区间外并单独报告 `backend_initialization_ms`。每个 steady-state run 的边界是：
+
+```text
+steady_clock start
+→ read_wav
+→ mono float32 / frame / Hann / FFT / Spectral Flux
+→ causal threshold / peak picking
+→ 完整 onset CSV 序列化到内存输出流
+→ steady_clock stop
+```
+
+CSV 序列化计入主指标，但保存 benchmark raw CSV/summary JSON 的文件系统写入不计入，避免磁盘型号和
+缓存状态混入 CPU 算法对比。若以后研究真实存储端到端延迟，必须使用不同指标名和 schema version。
+
+所有分位数只从独立 measured runs 计算；warm-up 和初始化样本不得进入 steady-state 统计。每组至少
+5 次 measured runs。当前使用 Type-7 线性插值：排序后令 `rank=p×(N-1)`，在相邻样本间插值。
+
+```text
+RTF = audio_duration_seconds / (elapsed_ms / 1000)
+```
+
+RTF 大于 1 表示快于实时；数值越大，单位墙钟时间处理的音频越多。raw CSV 必须保留每次 elapsed、
+RTF、音频时长、frame 数、onset 数和序列化字节数，不能只保存汇总值。
 
 ## Onset 一对一匹配
 
@@ -62,6 +84,10 @@ threshold[t] = mean(history) + 1.5 × population_stddev(history)
 
 onset time 使用候选帧 center，emitted time 使用右邻确认帧 available。算法延迟为两者之差；在
 48 kHz、frame 1024、hop 256 下，固定结构延迟为约 16 ms（半帧 10.67 ms 加一 hop 5.33 ms）。
+
+逐帧 diagnostics CSV 使用检测器同一次状态转移产生，不允许在 Python 中重新估算阈值。首帧因为没有
+历史数据，`causal_threshold` 留空；后续行记录 threshold、是否越阈值、是否仍有待确认峰，以及该帧
+到达时发出的 onset signal time。绘图只可视化这些数据，不参与检测决策。
 
 ## FFT 公平性
 

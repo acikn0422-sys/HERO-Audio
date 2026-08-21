@@ -9,8 +9,9 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-  if (argc > 4) {
-    std::cerr << "Usage: hero-audio [input.wav] [spectral-flux.csv] [onsets.csv]\n";
+  if (argc > 5) {
+    std::cerr << "Usage: hero-audio [input.wav] [spectral-flux.csv] [onsets.csv] "
+                 "[diagnostics.csv]\n";
     return 2;
   }
 
@@ -32,7 +33,8 @@ int main(int argc, char **argv) {
       const auto flux =
           hero_audio::compute_spectral_flux(audio.mono_samples, audio.sample_rate_hz, *fft);
       const hero_audio::CausalOnsetConfig onset_config;
-      const auto onsets = hero_audio::detect_causal_onsets(flux, onset_config);
+      const auto onset_analysis = hero_audio::analyze_causal_onsets(flux, onset_config);
+      const auto &onsets = onset_analysis.events;
       const auto maximum =
           std::max_element(flux.begin(), flux.end(), [](const auto &left, const auto &right) {
             return left.spectral_flux < right.spectral_flux;
@@ -56,9 +58,13 @@ int main(int argc, char **argv) {
         hero_audio::write_spectral_flux_csv(argv[2], flux);
         std::cout << "  csv: " << argv[2] << '\n';
       }
-      if (argc == 4) {
+      if (argc >= 4) {
         hero_audio::write_onsets_csv(argv[3], onsets);
         std::cout << "  onsets_csv: " << argv[3] << '\n';
+      }
+      if (argc >= 5) {
+        hero_audio::write_onset_diagnostics_csv(argv[4], onset_analysis.diagnostics);
+        std::cout << "  diagnostics_csv: " << argv[4] << '\n';
       }
     } catch (const std::exception &error) {
       std::cerr << "Error: " << error.what() << '\n';

@@ -6,6 +6,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace hero_audio {
 namespace {
@@ -71,9 +72,11 @@ double CausalOnsetDetector::threshold_from_history() const {
   return mean + config_.threshold_stddev_multiplier * standard_deviation + config_.threshold_offset;
 }
 
-std::optional<OnsetEvent> CausalOnsetDetector::process(const SpectralFluxFrame &frame) {
+std::optional<OnsetEvent> CausalOnsetDetector::process_impl(const SpectralFluxFrame &frame,
+                                                            OnsetDiagnosticFrame *diagnostic) {
   validate_frame(frame);
   std::optional<OnsetEvent> emitted;
+  std::optional<double> causal_threshold;
   bool extended_plateau = false;
 
   // A candidate is held for exactly one frame. The newly arrived frame is used
@@ -112,14 +115,31 @@ std::optional<OnsetEvent> CausalOnsetDetector::process(const SpectralFluxFrame &
 
   // history_ contains prior frames only at this point. This ordering is the
   // causal guarantee: current flux is appended after its threshold is computed.
-  if (!extended_plateau && !history_.empty()) {
-    const double threshold = threshold_from_history();
+  if (!history_.empty() && (!extended_plateau || diagnostic != nullptr)) {
+    causal_threshold = threshold_from_history();
     const double current_flux = static_cast<double>(frame.spectral_flux);
     const double previous_flux = static_cast<double>(history_.back());
-    if (current_flux > config_.minimum_flux && current_flux > threshold &&
-        current_flux >= previous_flux) {
-      pending_candidate_ = Candidate{.frame = frame, .threshold = threshold};
+    if (!extended_plateau && current_flux > config_.minimum_flux &&
+        current_flux > *causal_threshold && current_flux >= previous_flux) {
+      pending_candidate_ = Candidate{.frame = frame, .threshold = *causal_threshold};
     }
+  }
+
+  if (diagnostic != nullptr) {
+    const bool above_threshold = causal_threshold.has_value() &&
+                                 static_cast<double>(frame.spectral_flux) > config_.minimum_flux &&
+                                 static_cast<double>(frame.spectral_flux) > *causal_threshold;
+    *diagnostic = OnsetDiagnosticFrame{
+        .frame_index = frame.frame_index,
+        .frame_center_seconds = frame.frame_center_seconds,
+        .available_seconds = frame.available_seconds,
+        .spectral_flux = frame.spectral_flux,
+        .causal_threshold = causal_threshold,
+        .above_threshold = above_threshold,
+        .pending_peak_after_frame = pending_candidate_.has_value(),
+        .emitted_onset_time_seconds =
+            emitted.has_value() ? std::optional<double>(emitted->onset_time_seconds) : std::nullopt,
+    };
   }
 
   history_.push_back(frame.spectral_flux);
@@ -130,6 +150,17 @@ std::optional<OnsetEvent> CausalOnsetDetector::process(const SpectralFluxFrame &
   last_frame_center_seconds_ = frame.frame_center_seconds;
   last_available_seconds_ = frame.available_seconds;
   return emitted;
+}
+
+std::optional<OnsetEvent> CausalOnsetDetector::process(const SpectralFluxFrame &frame) {
+  return process_impl(frame, nullptr);
+}
+
+CausalOnsetFrameResult
+CausalOnsetDetector::process_with_diagnostics(const SpectralFluxFrame &frame) {
+  OnsetDiagnosticFrame diagnostic;
+  auto event = process_impl(frame, &diagnostic);
+  return CausalOnsetFrameResult{.event = event, .diagnostic = diagnostic};
 }
 
 void CausalOnsetDetector::reset() noexcept {
@@ -149,6 +180,22 @@ std::vector<OnsetEvent> detect_causal_onsets(std::span<const SpectralFluxFrame> 
     if (auto event = detector.process(frame); event.has_value()) {
       result.push_back(*event);
     }
+  }
+  return result;
+}
+
+CausalOnsetAnalysis analyze_causal_onsets(std::span<const SpectralFluxFrame> frames,
+                                          CausalOnsetConfig config) {
+  CausalOnsetDetector detector(config);
+  CausalOnsetAnalysis result;
+  result.events.reserve(frames.size() / 8);
+  result.diagnostics.reserve(frames.size());
+  for (const auto &frame : frames) {
+    auto frame_result = detector.process_with_diagnostics(frame);
+    if (frame_result.event.has_value()) {
+      result.events.push_back(*frame_result.event);
+    }
+    result.diagnostics.push_back(std::move(frame_result.diagnostic));
   }
   return result;
 }
@@ -177,6 +224,43 @@ void write_onsets_csv(const std::filesystem::path &path, std::span<const OnsetEv
     throw std::runtime_error("Unable to open onset CSV: " + path.string());
   }
   write_onsets_csv(output, events);
+}
+
+void write_onset_diagnostics_csv(std::ostream &output,
+                                 std::span<const OnsetDiagnosticFrame> diagnostics) {
+  const auto old_flags = output.flags();
+  const auto old_precision = output.precision();
+  output << "frame_index,frame_center_seconds,available_seconds,spectral_flux,"
+            "causal_threshold,above_threshold,pending_peak_after_frame,"
+            "emitted_onset_time_seconds\n"
+         << std::fixed << std::setprecision(9);
+  for (const auto &frame : diagnostics) {
+    output << frame.frame_index << ',' << frame.frame_center_seconds << ','
+           << frame.available_seconds << ',' << frame.spectral_flux << ',';
+    if (frame.causal_threshold.has_value()) {
+      output << *frame.causal_threshold;
+    }
+    output << ',' << (frame.above_threshold ? 1 : 0) << ','
+           << (frame.pending_peak_after_frame ? 1 : 0) << ',';
+    if (frame.emitted_onset_time_seconds.has_value()) {
+      output << *frame.emitted_onset_time_seconds;
+    }
+    output << '\n';
+  }
+  output.flags(old_flags);
+  output.precision(old_precision);
+  if (!output) {
+    throw std::runtime_error("Unable to write onset diagnostics CSV");
+  }
+}
+
+void write_onset_diagnostics_csv(const std::filesystem::path &path,
+                                 std::span<const OnsetDiagnosticFrame> diagnostics) {
+  std::ofstream output(path, std::ios::trunc);
+  if (!output) {
+    throw std::runtime_error("Unable to open onset diagnostics CSV: " + path.string());
+  }
+  write_onset_diagnostics_csv(output, diagnostics);
 }
 
 } // namespace hero_audio
