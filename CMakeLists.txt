@@ -15,6 +15,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(hero_audio_core
   src/audio/wav_reader.cpp
+  src/dsp/causal_onset.cpp
   src/dsp/spectral_flux.cpp
   src/fft/reference_backend.cpp
   src/fft/backend_factory.cpp
@@ -61,4 +62,8 @@ if(HERO_AUDIO_BUILD_TESTS)
   add_executable(spectral_flux_tests tests/test_spectral_flux.cpp)
   target_link_libraries(spectral_flux_tests PRIVATE HEROAudio::core)
   add_test(NAME spectral_flux_correctness COMMAND spectral_flux_tests)
+
+  add_executable(causal_onset_tests tests/test_causal_onset.cpp)
+  target_link_libraries(causal_onset_tests PRIVATE HEROAudio::core)
+  add_test(NAME causal_onset_correctness COMMAND causal_onset_tests)
 endif()
