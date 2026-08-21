@@ -58,6 +58,20 @@ Causal onset detector 只使用当前帧之前最多 16 帧计算 `mean + 1.5 ×
 不会为等待 refractory 内更强峰而增加额外输出延迟。onset CSV 同时记录信号时间、实际发出时间和
 算法延迟。
 
+使用人工标注评价预测 onset，默认容差为 ±50 ms：
+
+```bash
+./build/macos-arm64-dev/hero-audio-eval \
+  results/raw/onsets.csv references.csv \
+  --matches results/raw/matches.csv \
+  --metrics results/raw/metrics.json \
+  --tolerance-ms 50
+```
+
+reference CSV 可以是无表头的每行一个秒数，也可以包含 `onset_time_seconds` 列。匹配首先最大化
+一对一 TP 数量，再最小化总绝对时间误差；重复预测不能重复匹配同一标注。没有预测或没有标注造成
+指标分母为零时，对应 Precision、Recall 和 F1 保守记为 0。
+
 正式 CPU 基准使用 release preset；它会在 FFTW3f 缺失时直接失败，避免误用参考 FFT：
 
 ```bash
@@ -75,6 +89,7 @@ include/hero_audio/       公共 C++ 接口
 src/fft/                  FFT 后端实现与工厂
 src/audio/                WAV 解码与 mono 转换
 src/dsp/                  Hann、分帧、Spectral Flux 与 causal onset
+src/evaluation/           最优一对一匹配与准确率指标
 tests/                    正确性测试
 configs/                  版本化实验配置
 docs/                     指标与实验协议

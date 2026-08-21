@@ -1,31 +1,39 @@
 # HERO-Audio v0.1 分步骤实现指南
 
-本指南把操作分为 Terminal、C++、构建配置、GitHub 四部分。当前版本完成的是 Apple Silicon
-开发环境、FFTW3f CPU 基线接口和正确性测试；尚未声称完成 WAV 读取、Spectral Flux 或 onset 检测。
+本指南把操作分为 Terminal、C++、构建配置、GitHub 四部分。当前版本已完成 Apple Silicon
+开发环境、FFTW3f CPU 基线、WAV/mono、Spectral Flux、causal onset 检测，以及最优一对一
+onset 评价。整文件计时和绘图仍属于下一阶段。
 
 ## 0. 当前数据流和目录
 
 ```text
-Terminal / CI
-    │
-    ├── Brewfile ──> CMake + Ninja + pkg-config + FFTW
-    │
-    └── CMakePresets.json ──> Debug / Release 构建
-                                  │
-                                  v
-应用代码 ──> FFTBackend 接口 ──> ReferenceBackend
-                                  FFTWBackend
-                                  │
-                                  v
-                         1024-point float32 R2C
+WAV ──> mono float32 ──> overlap frames ──> Hann
+                                             │
+                                             v
+                                      FFTBackend 接口
+                                      ├── FFTW3f（正式 CPU）
+                                      └── radix-2（正确性）
+                                             │
+                                             v
+Spectral Flux CSV <── positive magnitude difference
+        │
+        v
+causal threshold + peak confirmation ──> onset CSV
+                                             │
+人工标注 CSV ─────────────────────────────────┤
+                                             v
+                             最优一对一匹配 ──> P/R/F1
 ```
 
 主要目录：
 
 ```text
 include/hero_audio/       公共 C++ 接口
+src/audio/                WAV 解码和 mono 转换
+src/dsp/                  Spectral Flux 与 causal onset
+src/evaluation/           最优匹配和准确率指标
 src/fft/                  FFT 后端
-tests/                    正确性测试
+tests/                    单元与 CLI 集成测试
 configs/                  实验配置
 docs/                     实验协议和说明
 scripts/                  安装与信息采集脚本
@@ -122,7 +130,31 @@ CPU 性能基线。
 
 检查输出不包含用户名之外的隐私数据后再提交。脚本不采集序列号、硬件 UUID 或 UDID。
 
-## 2. C++：按层实现 FFT 后端
+### 1.8 从 WAV 检测并评价 onset
+
+先让检测程序写出 Spectral Flux 和预测 onset：
+
+```bash
+./build/macos-arm64-dev/hero-audio \
+  path/to/input.wav \
+  results/raw/spectral-flux.csv \
+  results/raw/onsets.csv
+```
+
+人工标注可使用含 `onset_time_seconds` 表头的 CSV，也可每行只写一个秒数。然后执行：
+
+```bash
+./build/macos-arm64-dev/hero-audio-eval \
+  results/raw/onsets.csv \
+  path/to/references.csv \
+  --matches results/raw/matches.csv \
+  --metrics results/raw/metrics.json \
+  --tolerance-ms 50
+```
+
+终端会显示 TP、FP、FN、Precision、Recall 和 F1；两个可选输出文件分别保留匹配明细与机器可读指标。
+
+## 2. C++：按层实现检测与评价
 
 ### 2.1 定义统一接口
 
@@ -239,25 +271,25 @@ case FFTBackendKind::FFTW:
 
 文件：`src/main.cpp`
 
-当前入口只验证编译产物和列出后端：
+`src/main.cpp` 负责 WAV 到预测 onset 的完整检测链；构建中存在 FFTW3f 时优先选择正式 CPU
+后端，否则退回 reference 后端：
 
 ```cpp
-int main() {
-  std::cout << "HERO-Audio v0.1 scaffold\nAvailable FFT backends:\n";
-  for (const auto backend : hero_audio::available_fft_backends()) {
-    std::cout << "  - " << hero_audio::backend_name(backend) << '\n';
-  }
-  return 0;
-}
+const auto audio = hero_audio::read_wav(input_path);
+auto fft = hero_audio::make_fft_backend(backend_kind, 1024);
+const auto flux = hero_audio::compute_spectral_flux(
+    audio.mono_samples, audio.sample_rate_hz, *fft);
+const auto onsets = hero_audio::detect_causal_onsets(flux);
 ```
 
-下一阶段才把这里替换为命令行解析、WAV 输入和 onset CSV 输出。
+`src/evaluate_main.cpp` 是独立评价入口，不重复执行音频检测，因此同一份预测可以使用不同人工标注或
+容差复算指标。
 
 ### 2.6 正确性测试
 
 文件：`tests/test_fft.cpp`
 
-两个测试会对所有已编译后端运行：
+FFT 测试会对所有已编译后端运行：
 
 1. 单位脉冲的所有频点应近似 `1 + 0i`；
 2. 整周期正弦的最大频谱峰必须出现在指定频点 37。
@@ -270,8 +302,43 @@ for (const auto kind : hero_audio::available_fft_backends()) {
 }
 ```
 
-这证明接口、输出尺寸和基本频点位置一致，但还不是完整的跨后端数值误差测试。正式 onset 实现前还应
-增加随机输入、Hann window、DC、Nyquist 和 reference-vs-FFTW 容差测试。
+除此之外，CTest 还覆盖 WAV reader、Spectral Flux、causal onset、最优匹配与评价 CLI。运行：
+
+```bash
+ctest --preset macos-arm64-dev --output-on-failure
+```
+
+当前应有 6 个 CTest 测试全部通过。
+
+### 2.7 最优一对一 onset 评价
+
+公共接口位于 `include/hero_audio/onset_evaluation.hpp`，实现位于
+`src/evaluation/onset_evaluation.cpp`。输入会稳定排序，但输出仍保存原始输入索引。动态规划状态
+`dp[i][j]` 表示前 `i` 个预测与前 `j` 个标注的最优结果，每个状态比较三种转移：
+
+```text
+跳过预测：dp[i-1][j]
+跳过标注：dp[i][j-1]
+形成匹配：dp[i-1][j-1] + (1 match, absolute_error)
+```
+
+只有 `absolute_error <= tolerance` 才允许第三种转移。状态比较先选择匹配数更多的方案；匹配数相同
+时选择总绝对误差更小的方案。最后回溯 `choice` 字段得到每个一对一配对。复杂度为 `O(NM)` 时间和
+`O(NM)` 空间。
+
+指标由最终匹配数直接计算：
+
+```text
+TP = matches
+FP = predictions - TP
+FN = references - TP
+Precision = TP / (TP + FP)
+Recall = TP / (TP + FN)
+F1 = 2 * Precision * Recall / (Precision + Recall)
+```
+
+任一分母为零时对应指标返回 0。单元测试另用不受序列动态规划约束的穷举搜索检查所有小规模组合，
+同时覆盖重复预测、乱序输入、50 ms 包含边界和无数据情形。
 
 ## 3. 其他配置文件
 
@@ -295,8 +362,8 @@ brew "fftw"
 3. 查找 FFTW3f；
 4. 找到时加入 `fftw_backend.cpp`、链接 `FFTW3f::fftw3f` 并定义
    `HERO_AUDIO_HAS_FFTW3F=1`；
-5. 创建 `hero-audio` 可执行文件；
-6. 创建并注册 `hero_audio_tests`。
+5. 创建 `hero-audio` 和 `hero-audio-eval` 可执行文件；
+6. 创建并注册 FFT、WAV、Spectral Flux、causal onset、评价单元测试与评价 CLI 测试。
 
 项目把正式库名锁定为单精度 `fftw3f`，不能误链接 double 精度的 `fftw3`。
 
@@ -393,12 +460,12 @@ git push
 2. mono float32 转换；
 3. frame/hop 和 Hann window；
 4. FFT magnitude、Spectral Flux 与 CSV；
-5. causal adaptive threshold、peak picking 与 onset CSV。
+5. causal adaptive threshold、peak picking 与 onset CSV；
+6. 最优一对一 onset matching、Precision、Recall 与 F1。
 
 下一阶段按顺序实现：
 
-1. 最优一对一 onset matching；
-2. Precision、Recall 与 F1；
-3. 整文件计时和第一张通量图。
+1. 整文件计时；
+2. 第一张“时间—Spectral Flux—threshold—onset”图。
 
 上述闭环完成以前，不开始 CUDA、AI、FPGA 或运营优化模型。
