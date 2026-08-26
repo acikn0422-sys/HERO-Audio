@@ -12,6 +12,8 @@ macOS／Apple Silicon；第一阶段仅实现和验证 C++ CPU 检测闭环。
 - causal threshold；
 - onset 评价采用 ±50 ms、最大匹配数优先且总误差最小的一对一匹配；
 - 离线整文件 benchmark 报告 median、P95、P99 和 RTF；
+- 流式处理器每次接收 256 samples，并报告 P50、P95、P99 hop compute；
+- 自动证明流式 flux/onset 与离线结果一致，48 kHz 下要求 `P95 < 5.333 ms`；
 - 逐帧 diagnostics 支持绘制 Spectral Flux、causal threshold 与 onset。
 
 完整指标定义见 [docs/benchmark_protocol.md](docs/benchmark_protocol.md)。
@@ -19,6 +21,8 @@ macOS／Apple Silicon；第一阶段仅实现和验证 C++ CPU 检测闭环。
 [docs/step_by_step_implementation.md](docs/step_by_step_implementation.md)。
 本阶段完整计时边界、C++ 源码结构和绘图字段见
 [docs/offline_benchmark_and_plot.md](docs/offline_benchmark_and_plot.md)。
+逐 hop 状态机、计时边界与一致性证明见
+[docs/streaming_processor.md](docs/streaming_processor.md)。
 
 GitHub Actions 只验证跨机器构建和数值正确性，不生成或发布性能结论。正式 Apple Silicon benchmark
 必须在本地 M 系列机器上运行，并保存 `scripts/capture_system_info.sh` 的输出。
@@ -92,7 +96,9 @@ reference CSV 可以是无表头的每行一个秒数，也可以包含 `onset_t
 
 ```text
 results/raw/synthetic-demo/offline-benchmark-runs.csv
+results/raw/synthetic-demo/streaming-hop-measurements.csv
 results/processed/synthetic-demo/offline-benchmark-summary.json
+results/processed/synthetic-demo/streaming-benchmark-summary.json
 results/processed/synthetic-demo/spectral-flux-threshold-onsets.png
 ```
 
@@ -108,6 +114,27 @@ results/processed/synthetic-demo/spectral-flux-threshold-onsets.png
 
 FFTW plan 创建时间单独报告。每个 steady-state run 从开始读取 WAV 计时，到所有 onset 完成 CSV
 序列化后停止；benchmark 结果文件本身的磁盘写入不进入该主指标。
+
+## 流式 hop benchmark
+
+下面的程序先把 WAV 解码为 mono float32，再模拟音频设备每次送入 256 个新采样。WAV 解码、FFT plan
+初始化和输出文件写入均不计入 hop compute：
+
+```bash
+./build/macos-arm64-release/hero-audio-stream \
+  path/to/input.wav \
+  results/raw/streaming-hop-measurements.csv \
+  results/processed/streaming-benchmark-summary.json \
+  --warmup-passes 1 --passes 5 --backend fftw
+```
+
+前 3 个 hop 只负责填满第一个 1024-sample 窗口，不进入稳态分位数。从第 4 个 hop 开始，每个计时
+样本包括新采样写入、Hann、FFTW、Spectral Flux 和 causal detection。48 kHz 下每个 hop 对应
+`256 / 48000 = 5.333 ms` 音频时间，因此 `P95 compute` 必须严格低于 5.333 ms。summary JSON 还会
+用现有离线流程重算同一 WAV，核对 frame/onset 数、逐帧 flux 和 onset 事件；不一致时 CLI 返回错误。
+
+这是“用 WAV 仿真逐块到达”的算法与 CPU 调度基准，不包含麦克风、CoreAudio、操作系统缓冲和驱动
+延迟。真实麦克风接入属于下一层输入适配器，不能把本指标冒充为完整设备端到端延迟。
 
 正式 CPU 基准使用 release preset；它会在 FFTW3f 缺失时直接失败，避免误用参考 FFT：
 
@@ -125,8 +152,8 @@ ctest --preset macos-arm64-release
 include/hero_audio/       公共 C++ 接口
 src/fft/                  FFT 后端实现与工厂
 src/audio/                WAV 解码与 mono 转换
-src/benchmark/            整文件重复计时与统计
-src/dsp/                  Hann、分帧、Spectral Flux 与 causal onset
+src/benchmark/            整文件与逐 hop 重复计时、统计和一致性验证
+src/dsp/                  Hann、分帧、Spectral Flux、causal onset 与流式状态机
 src/evaluation/           最优一对一匹配与准确率指标
 tests/                    正确性测试
 configs/                  版本化实验配置

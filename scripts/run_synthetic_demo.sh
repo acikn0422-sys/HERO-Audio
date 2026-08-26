@@ -45,6 +45,14 @@ cmake --build --preset macos-arm64-release
   --runs 5 \
   --backend fftw
 
+"${repo_dir}/build/macos-arm64-release/hero-audio-stream" \
+  "${raw_dir}/synthetic-clicks.wav" \
+  "${raw_dir}/streaming-hop-measurements.csv" \
+  "${processed_dir}/streaming-benchmark-summary.json" \
+  --warmup-passes 1 \
+  --passes 5 \
+  --backend fftw
+
 "${python_bin}" "${repo_dir}/scripts/plot_onset_diagnostics.py" \
   "${raw_dir}/diagnostics.csv" \
   "${raw_dir}/onsets.csv" \
