@@ -1,0 +1,6 @@
+recording_id,scenario,intended_events,split,annotation_status
+live-01,quiet_room_hand_claps,5_to_10_clear_claps,development,pending
+live-02,desk_or_table_taps,5_to_10_varied_taps,development,pending
+live-03,finger_snaps_or_key_clicks,5_to_10_quiet_transients,development,pending
+live-04,mixed_everyday_room_sound,foreground_and_background_transients,held_out,pending
+live-05,quiet_room_negative_control,no_intentional_event,held_out,pending

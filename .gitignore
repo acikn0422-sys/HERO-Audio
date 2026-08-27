@@ -7,6 +7,7 @@ __pycache__/
 compile_commands.json
 work/
 /outputs/
+data/local/
 results/raw/*
 !results/raw/.gitkeep
 results/processed/*

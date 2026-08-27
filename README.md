@@ -14,6 +14,7 @@ macOS／Apple Silicon；第一阶段仅实现和验证 C++ CPU 检测闭环。
 - 离线整文件 benchmark 报告 median、P95、P99 和 RTF；
 - 流式处理器每次接收 256 samples，并报告 P50、P95、P99 hop compute；
 - 自动证明流式 flux/onset 与离线结果一致，48 kHz 下要求 `P95 < 5.333 ms`；
+- macOS CoreAudio 实时输入、固定容量无锁 SPSC 队列与本地 PCM16 录音；
 - 逐帧 diagnostics 支持绘制 Spectral Flux、causal threshold 与 onset。
 
 完整指标定义见 [docs/benchmark_protocol.md](docs/benchmark_protocol.md)。
@@ -23,6 +24,8 @@ macOS／Apple Silicon；第一阶段仅实现和验证 C++ CPU 检测闭环。
 [docs/offline_benchmark_and_plot.md](docs/offline_benchmark_and_plot.md)。
 逐 hop 状态机、计时边界与一致性证明见
 [docs/streaming_processor.md](docs/streaming_processor.md)。
+CoreAudio 回调、队列过载策略、实时输出和五段录音流程见
+[docs/live_coreaudio.md](docs/live_coreaudio.md)。
 
 GitHub Actions 只验证跨机器构建和数值正确性，不生成或发布性能结论。正式 Apple Silicon benchmark
 必须在本地 M 系列机器上运行，并保存 `scripts/capture_system_info.sh` 的输出。
@@ -134,7 +137,46 @@ FFTW plan 创建时间单独报告。每个 steady-state run 从开始读取 WAV
 用现有离线流程重算同一 WAV，核对 frame/onset 数、逐帧 flux 和 onset 事件；不一致时 CLI 返回错误。
 
 这是“用 WAV 仿真逐块到达”的算法与 CPU 调度基准，不包含麦克风、CoreAudio、操作系统缓冲和驱动
-延迟。真实麦克风接入属于下一层输入适配器，不能把本指标冒充为完整设备端到端延迟。
+延迟。真实输入使用下面的独立 live 指标，不能把两个结果混用。
+
+## CoreAudio 实时输入
+
+在 Terminal 中运行；第一次使用时 macOS 会请求麦克风权限：
+
+```bash
+cmake --preset macos-arm64-release
+cmake --build --preset macos-arm64-release
+
+./build/macos-arm64-release/hero-audio-live \
+  data/local/manual-session-01 \
+  --seconds 10 \
+  --backend fftw
+```
+
+程序使用当前默认输入设备的原生采样率，转换为 mono float32。CoreAudio callback 只把数据聚合为
+256-sample hop 并写入 64-hop 固定容量 SPSC 队列；FFTW、onset 检测、CSV 和 WAV 写盘都在消费线程。
+每个新 session 目录包含：
+
+```text
+capture.wav
+onsets.csv
+hop-measurements.csv
+summary.json
+```
+
+输出目录已存在上述文件时程序会拒绝覆盖。`summary.json` 将 dropped hop 和 render error 分开记录；
+任一非零时 `capture_integrity_pass=false`。实时输出中的事件仍是 onset/transient candidate，不等同于
+机器故障、危险声或其他业务“异常”。
+
+交互采集五段相互独立的自录音频：
+
+```bash
+./scripts/capture_five_live_samples.sh 10
+```
+
+脚本依次提示录制拍手、桌面敲击、轻微瞬态、混合环境声和安静负样本，并在每个 session 创建空的
+`references.csv`。音频保存在被 Git 忽略的 `data/local/`；必须人工听音并填写 reference onset，
+不能把程序预测复制成真实标注。
 
 正式 CPU 基准使用 release preset；它会在 FFTW3f 缺失时直接失败，避免误用参考 FFT：
 
@@ -151,7 +193,7 @@ ctest --preset macos-arm64-release
 ```text
 include/hero_audio/       公共 C++ 接口
 src/fft/                  FFT 后端实现与工厂
-src/audio/                WAV 解码与 mono 转换
+src/audio/                WAV 读写、mono 转换与 macOS CoreAudio 输入
 src/benchmark/            整文件与逐 hop 重复计时、统计和一致性验证
 src/dsp/                  Hann、分帧、Spectral Flux、causal onset 与流式状态机
 src/evaluation/           最优一对一匹配与准确率指标

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "audio": {
     "sample_rate_hz": 48000,
     "channels": 1,
@@ -40,6 +40,19 @@
       "partial_tail_policy": "ignore_without_padding",
       "deadline_ms_at_48000_hz": 5.333333333,
       "requirement": "p95_strictly_less_than_hop_period"
+    },
+    "live_coreaudio": {
+      "platform": "macos",
+      "input_device_policy": "current_default_input",
+      "sample_rate_policy": "device_native_integer_rate",
+      "client_format": "mono_float32",
+      "callback_work": "render_aggregate_enqueue_only",
+      "queue_type": "bounded_lock_free_spsc",
+      "queue_capacity_hops": 64,
+      "queue_overflow_policy": "drop_hop_count_gap_reset_processor",
+      "recording_format": "mono_pcm16_wav",
+      "capture_integrity_requirement": "zero_dropped_hops_and_zero_render_errors",
+      "device_and_driver_latency_included": false
     }
   }
 }
