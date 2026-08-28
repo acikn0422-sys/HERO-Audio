@@ -20,10 +20,13 @@ CoreAudio real-time callback
              v
 main consumer thread
     ├── StreamingProcessor: Hann → FFTW → flux → causal onset
+    ├── downstream feature extraction → frozen-baseline transient score
     ├── capture.wav (PCM16)
     ├── hop-measurements.csv
     ├── onsets.csv
-    └── summary.json
+    ├── summary.json
+    ├── anomaly-frames.csv / anomaly-events.csv
+    └── anomaly-summary.json
 ```
 
 callback 和 consumer 分开，是因为声卡线程有硬实时约束。FFT、磁盘或终端输出偶尔变慢时，不能让
@@ -77,8 +80,10 @@ ctest --preset macos-arm64-release
 
 ./build/macos-arm64-release/hero-audio-live \
   data/local/manual-session-01 \
-  --seconds 10 \
-  --backend fftw
+  --seconds 60 \
+  --backend fftw \
+  --operating-state steady \
+  --anomaly-baseline-seconds 30
 ```
 
 第一次运行时，在 macOS 弹窗选择允许。如果没有收到音频，到：
@@ -127,7 +132,10 @@ onset 秒数。预测文件 `onsets.csv` 不能作为人工 reference，否则�
 
 ## 8. 关于“异常”
 
-onset 只回答“频谱是否突然变化”，并不知道变化是正常拍手、机器故障还是背景噪声。要实现异常检测，
-下一阶段必须定义异常类别、正常工况、窗口级标签、误报成本和 held-out test。当前 flux/onset 可以成为
-`EventDecision` 的输入特征，但项目界面和报告必须称其为 transient candidate，直到有相应标注与
-独立评价为止。
+onset 只回答“频谱是否突然变化”，并不知道变化是正常拍手、机器故障还是背景噪声。当前新增的 v1
+研究层把问题进一步限定为“稳态正常基线之外的瞬态复核候选”：它复用 flux，加上 RMS、absolute peak
+和 zero-crossing rate，先收集 30 秒 verified-normal median/MAD，再冻结基线并只给 confirmed onset
+评分。完整规则见 `docs/transient_anomaly_v1.md`。
+
+这仍不等于故障类型识别。必须用独立人工标签报告 event Precision/Recall/F1、false alarms/hour 和检测
+延迟后，才能作准确率陈述；无标签 live 输出只能证明实时计算闭环成立。

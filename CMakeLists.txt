@@ -18,6 +18,9 @@ add_library(hero_audio_core
   src/audio/wav_writer.cpp
   src/benchmark/offline_benchmark.cpp
   src/benchmark/streaming_benchmark.cpp
+  src/dsp/acoustic_features.cpp
+  src/dsp/anomaly_detector.cpp
+  src/dsp/anomaly_output.cpp
   src/dsp/causal_onset.cpp
   src/dsp/spectral_flux.cpp
   src/dsp/streaming_processor.cpp
@@ -114,6 +117,10 @@ if(HERO_AUDIO_BUILD_TESTS)
   add_executable(streaming_processor_tests tests/test_streaming_processor.cpp)
   target_link_libraries(streaming_processor_tests PRIVATE HEROAudio::core)
   add_test(NAME streaming_processor_correctness COMMAND streaming_processor_tests)
+
+  add_executable(anomaly_detector_tests tests/test_anomaly_detector.cpp)
+  target_link_libraries(anomaly_detector_tests PRIVATE HEROAudio::core)
+  add_test(NAME anomaly_detector_correctness COMMAND anomaly_detector_tests)
 
   add_executable(live_support_tests tests/test_live_support.cpp)
   target_link_libraries(live_support_tests PRIVATE HEROAudio::core)

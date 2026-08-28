@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "model_name": "steady_state_transient_anomaly_v1",
+  "status": "research_prototype_requires_labelled_validation",
+  "scope": {
+    "included": "unexpected transient acoustic events during declared steady operation",
+    "excluded": [
+      "universal sound anomaly detection",
+      "fault type diagnosis",
+      "device and driver latency",
+      "startup and shutdown classification"
+    ]
+  },
+  "input": {
+    "sample_format": "mono_float32",
+    "frame_size_samples": 1024,
+    "hop_size_samples": 256,
+    "operating_state_required": "steady"
+  },
+  "features": [
+    "existing_spectral_flux",
+    "frame_rms",
+    "peak_absolute",
+    "zero_crossing_rate"
+  ],
+  "normal_baseline": {
+    "duration_seconds": 30.0,
+    "human_requirement": "verified normal steady-state audio",
+    "location": "start of each uninterrupted session",
+    "statistics": "median_and_1.4826_times_MAD",
+    "policy_after_calibration": "frozen_no_online_adaptation",
+    "unfinished_baseline_after_gap": "discard_and_restart",
+    "unfinished_baseline_after_nonsteady_state": "discard_and_restart"
+  },
+  "decision": {
+    "requires_confirmed_causal_onset": true,
+    "spectral_flux_positive_z_threshold": 6.0,
+    "frame_rms_positive_z_threshold": 6.0,
+    "peak_absolute_positive_z_threshold": 6.0,
+    "combined_score": "max(flux_z/6,rms_z/6,peak_z/6)",
+    "anomaly_score_threshold": 1.0,
+    "refractory_seconds": 0.25,
+    "zero_crossing_rate_role": "reported_context_not_a_v1_decision_threshold"
+  },
+  "evaluation_required_before_claims": {
+    "development_and_held_out_sessions_separate": true,
+    "metrics": [
+      "event_precision",
+      "event_recall",
+      "event_f1",
+      "false_alarms_per_hour",
+      "p95_detection_delay_ms"
+    ]
+  }
+}
