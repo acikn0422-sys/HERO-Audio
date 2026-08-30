@@ -5,12 +5,19 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_dir="${1:-${repo_dir}/data/local/anomaly-session-$(date -u +%Y%m%dT%H%M%SZ)}"
 duration_seconds="${2:-60}"
 baseline_seconds="${3:-30}"
+dataset_split="${4:-development}"
 live_binary="${repo_dir}/build/macos-arm64-release/hero-audio-live"
+
+if [[ "${dataset_split}" != "development" && "${dataset_split}" != "held-out" ]]; then
+  echo "Split must be development or held-out." >&2
+  exit 2
+fi
 
 echo "HERO-Audio steady-state transient anomaly session"
 echo "Output: ${output_dir}"
 echo "Total duration: ${duration_seconds} seconds"
 echo "Verified-normal baseline: first ${baseline_seconds} seconds"
+echo "Dataset split: ${dataset_split}"
 echo
 echo "Protocol:"
 echo "  1. Keep the microphone and sound source fixed."
@@ -42,8 +49,18 @@ if [[ -d "${output_dir}" && ! -e "${output_dir}/human-labels.csv" ]]; then
     > "${output_dir}/human-labels.csv"
 fi
 
+if [[ -d "${output_dir}" && ! -e "${output_dir}/evaluation-manifest.csv" ]]; then
+  session_id="$(basename "${output_dir}")"
+  printf '%s\n' \
+    'session_id,split,audio_path,labels_path,frames_path,events_path,eligibility_summary_path' \
+    "${session_id},${dataset_split},capture-analysis-f32.wav,human-labels.csv,replay-v1/anomaly-frames.csv,replay-v1/anomaly-events.csv,anomaly-summary.json" \
+    > "${output_dir}/evaluation-manifest.csv"
+fi
+
 echo
 echo "Do not copy anomaly-events.csv into human-labels.csv."
 echo "Listen to capture.wav and annotate independently."
+echo "Use capture-analysis-f32.wav only for deterministic replay; do not edit it."
 echo "Valid v1 labels: normal_background, normal_transition, anomaly_impact, anomaly_burst."
+echo "After annotation, replay into: ${output_dir}/replay-v1"
 exit "${capture_status}"

@@ -21,9 +21,11 @@ add_library(hero_audio_core
   src/dsp/acoustic_features.cpp
   src/dsp/anomaly_detector.cpp
   src/dsp/anomaly_output.cpp
+  src/dsp/anomaly_replay.cpp
   src/dsp/causal_onset.cpp
   src/dsp/spectral_flux.cpp
   src/dsp/streaming_processor.cpp
+  src/evaluation/anomaly_evaluation.cpp
   src/evaluation/onset_evaluation.cpp
   src/fft/reference_backend.cpp
   src/fft/backend_factory.cpp
@@ -65,6 +67,12 @@ target_link_libraries(hero-audio-bench PRIVATE HEROAudio::core)
 
 add_executable(hero-audio-stream src/streaming_main.cpp)
 target_link_libraries(hero-audio-stream PRIVATE HEROAudio::core)
+
+add_executable(hero-audio-anomaly-replay src/anomaly_replay_main.cpp)
+target_link_libraries(hero-audio-anomaly-replay PRIVATE HEROAudio::core)
+
+add_executable(hero-audio-anomaly-eval src/anomaly_evaluate_main.cpp)
+target_link_libraries(hero-audio-anomaly-eval PRIVATE HEROAudio::core)
 
 if(APPLE)
   find_library(HERO_AUDIO_COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
@@ -122,6 +130,14 @@ if(HERO_AUDIO_BUILD_TESTS)
   target_link_libraries(anomaly_detector_tests PRIVATE HEROAudio::core)
   add_test(NAME anomaly_detector_correctness COMMAND anomaly_detector_tests)
 
+  add_executable(anomaly_replay_tests tests/test_anomaly_replay.cpp)
+  target_link_libraries(anomaly_replay_tests PRIVATE HEROAudio::core)
+  add_test(NAME anomaly_replay_correctness COMMAND anomaly_replay_tests)
+
+  add_executable(anomaly_evaluation_tests tests/test_anomaly_evaluation.cpp)
+  target_link_libraries(anomaly_evaluation_tests PRIVATE HEROAudio::core)
+  add_test(NAME anomaly_evaluation_correctness COMMAND anomaly_evaluation_tests)
+
   add_executable(live_support_tests tests/test_live_support.cpp)
   target_link_libraries(live_support_tests PRIVATE HEROAudio::core)
   add_test(NAME live_support_correctness COMMAND live_support_tests)
@@ -135,6 +151,16 @@ if(HERO_AUDIO_BUILD_TESTS)
   )
   set_tests_properties(onset_evaluation_cli PROPERTIES
     PASS_REGULAR_EXPRESSION "f1: 0.800000"
+  )
+
+  add_test(NAME anomaly_replay_cli_help COMMAND hero-audio-anomaly-replay --help)
+  set_tests_properties(anomaly_replay_cli_help PROPERTIES
+    PASS_REGULAR_EXPRESSION "input-float32.wav"
+  )
+
+  add_test(NAME anomaly_evaluation_cli_help COMMAND hero-audio-anomaly-eval --help)
+  set_tests_properties(anomaly_evaluation_cli_help PROPERTIES
+    PASS_REGULAR_EXPRESSION "--split development|held-out"
   )
 
   if(APPLE)

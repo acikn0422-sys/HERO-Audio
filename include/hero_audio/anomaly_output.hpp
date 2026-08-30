@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
+#include <string_view>
 
 namespace hero_audio {
 
@@ -22,6 +23,7 @@ void write_anomaly_event_csv_row(
     std::ostream &output, std::uint64_t sequence, std::size_t segment_index,
     double segment_offset_seconds, OperatingState operating_state,
     const TransientEventScore &event,
+    std::string_view delay_scope,
     double estimated_software_detection_delay_ms);
 
 } // namespace hero_audio

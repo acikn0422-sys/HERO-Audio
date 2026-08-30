@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -127,6 +128,98 @@ void Pcm16WavWriter::finalize() {
   output_.flush();
   if (!output_) {
     throw std::runtime_error("Unable to finalize PCM16 WAV output");
+  }
+  finalized_ = true;
+}
+
+Float32WavWriter::Float32WavWriter(const std::filesystem::path &path,
+                                   std::uint32_t sample_rate_hz)
+    : output_(path, std::ios::binary | std::ios::trunc),
+      sample_rate_hz_(sample_rate_hz) {
+  if (sample_rate_hz_ == 0) {
+    throw std::invalid_argument("WAV output sample rate must be non-zero");
+  }
+  if (sample_rate_hz_ > std::numeric_limits<std::uint32_t>::max() / 4U) {
+    throw std::invalid_argument("WAV output sample rate is too large for float32 byte rate");
+  }
+  if (!output_) {
+    throw std::runtime_error("Unable to open WAV output: " + path.string());
+  }
+
+  // Classic 44-byte mono IEEE-float RIFF header. The float encoding tag is 3.
+  output_.write("RIFF", 4);
+  write_u32(output_, 0);
+  output_.write("WAVE", 4);
+  output_.write("fmt ", 4);
+  write_u32(output_, 16);
+  write_u16(output_, 3); // IEEE float.
+  write_u16(output_, 1); // Mono.
+  write_u32(output_, sample_rate_hz_);
+  write_u32(output_, sample_rate_hz_ * 4U);
+  write_u16(output_, 4);
+  write_u16(output_, 32);
+  output_.write("data", 4);
+  write_u32(output_, 0);
+  if (!output_) {
+    throw std::runtime_error("Unable to write float32 WAV header");
+  }
+}
+
+Float32WavWriter::~Float32WavWriter() {
+  if (!finalized_) {
+    try {
+      finalize();
+    } catch (...) {
+      // Normal execution calls finalize() explicitly so I/O failures are
+      // reported. A destructor cannot safely propagate an exception.
+    }
+  }
+}
+
+void Float32WavWriter::append(std::span<const float> mono_samples) {
+  if (finalized_) {
+    throw std::logic_error("Cannot append to a finalized WAV file");
+  }
+  if (std::any_of(mono_samples.begin(), mono_samples.end(),
+                  [](float sample) { return !std::isfinite(sample); })) {
+    throw std::invalid_argument("WAV output contains a non-finite sample");
+  }
+  constexpr std::uint64_t maximum_data_bytes =
+      static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) - 36U;
+  if (mono_samples.size() > (maximum_data_bytes / 4U) - sample_count_) {
+    throw std::overflow_error("Float32 WAV exceeds the classic RIFF size limit");
+  }
+
+  for (const float sample : mono_samples) {
+    write_u32(output_, std::bit_cast<std::uint32_t>(sample));
+  }
+  sample_count_ += mono_samples.size();
+  if (!output_) {
+    throw std::runtime_error("Unable to append float32 WAV samples");
+  }
+}
+
+void Float32WavWriter::append_silence(std::size_t sample_count) {
+  constexpr std::array<float, 256> silence{};
+  while (sample_count != 0) {
+    const auto count = std::min(sample_count, silence.size());
+    append(std::span<const float>(silence).first(count));
+    sample_count -= count;
+  }
+}
+
+void Float32WavWriter::finalize() {
+  if (finalized_) {
+    return;
+  }
+  const auto data_bytes = static_cast<std::uint32_t>(sample_count_ * 4U);
+  output_.seekp(4, std::ios::beg);
+  write_u32(output_, 36U + data_bytes);
+  output_.seekp(40, std::ios::beg);
+  write_u32(output_, data_bytes);
+  output_.flush();
+  if (!output_) {
+    throw std::runtime_error("Unable to finalize float32 WAV output");
   }
   finalized_ = true;
 }

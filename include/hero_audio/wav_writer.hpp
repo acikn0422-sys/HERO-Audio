@@ -33,4 +33,29 @@ private:
   bool finalized_{};
 };
 
+// Analysis-grade streaming mono IEEE float32 WAV writer. Unlike the listening
+// PCM16 file, this preserves every finite input sample bit-for-bit so a later
+// 256-sample replay receives the same values as the live analysis pipeline.
+class Float32WavWriter {
+public:
+  Float32WavWriter(const std::filesystem::path &path, std::uint32_t sample_rate_hz);
+  ~Float32WavWriter();
+
+  Float32WavWriter(const Float32WavWriter &) = delete;
+  Float32WavWriter &operator=(const Float32WavWriter &) = delete;
+
+  void append(std::span<const float> mono_samples);
+  void append_silence(std::size_t sample_count);
+  void finalize();
+
+  [[nodiscard]] std::uint64_t sample_count() const noexcept { return sample_count_; }
+  [[nodiscard]] bool finalized() const noexcept { return finalized_; }
+
+private:
+  std::ofstream output_;
+  std::uint32_t sample_rate_hz_{};
+  std::uint64_t sample_count_{};
+  bool finalized_{};
+};
+
 } // namespace hero_audio

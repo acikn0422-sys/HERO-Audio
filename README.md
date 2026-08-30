@@ -14,8 +14,9 @@ macOS／Apple Silicon；第一阶段仅实现和验证 C++ CPU 检测闭环。
 - 离线整文件 benchmark 报告 median、P95、P99 和 RTF；
 - 流式处理器每次接收 256 samples，并报告 P50、P95、P99 hop compute；
 - 自动证明流式 flux/onset 与离线结果一致，48 kHz 下要求 `P95 < 5.333 ms`；
-- macOS CoreAudio 实时输入、固定容量无锁 SPSC 队列与本地 PCM16 录音；
+- macOS CoreAudio 实时输入、固定容量无锁 SPSC 队列、PCM16 回听录音和 bit-exact float32 分析录音；
 - 稳态瞬态异常研究层：30 秒 verified-normal 鲁棒基线、冻结后评分与独立审计输出；
+- float32 确定性回放、人工区间标签、最优一对一异常匹配和 development/held-out 评价；
 - 逐帧 diagnostics 支持绘制 Spectral Flux、causal threshold 与 onset。
 
 完整指标定义见 [docs/benchmark_protocol.md](docs/benchmark_protocol.md)。
@@ -29,6 +30,8 @@ CoreAudio 回调、队列过载策略、实时输出和五段录音流程见
 [docs/live_coreaudio.md](docs/live_coreaudio.md)。
 异常类别边界、特征、median/MAD 公式、运行方式与标注规则见
 [docs/transient_anomaly_v1.md](docs/transient_anomaly_v1.md)。
+实时录音、确定性回放、manifest、参数冻结与 held-out 最终评价见
+[docs/anomaly_replay_and_evaluation.md](docs/anomaly_replay_and_evaluation.md)。
 
 GitHub Actions 只验证跨机器构建和数值正确性，不生成或发布性能结论。正式 Apple Silicon benchmark
 必须在本地 M 系列机器上运行，并保存 `scripts/capture_system_info.sh` 的输出。
@@ -164,6 +167,7 @@ cmake --build --preset macos-arm64-release
 
 ```text
 capture.wav
+capture-analysis-f32.wav
 onsets.csv
 hop-measurements.csv
 summary.json
@@ -187,6 +191,28 @@ anomaly-summary.json
 默认录制 60 秒、前 30 秒作为 verified-normal。看到终端显示
 `anomaly_baseline_complete: monitoring has started` 后才制造预先定义的测试事件。脚本创建的
 `human-labels.csv` 必须通过回听独立填写，不能复制程序预测。
+
+录音同时保存 `capture-analysis-f32.wav`，它逐样本保留 live 消费线程收到的 mono float32 数据，供
+确定性回放使用。回听仍使用 `capture.wav`。完成独立标注后：
+
+```bash
+./build/macos-arm64-release/hero-audio-anomaly-replay \
+  data/local/anomaly-session-01/capture-analysis-f32.wav \
+  data/local/anomaly-session-01/replay-v1 \
+  --backend fftw --baseline-seconds 30 \
+  --flux-z 6 --rms-z 6 --peak-z 6 --refractory-ms 250 \
+  --operating-state steady
+
+./build/macos-arm64-release/hero-audio-anomaly-eval \
+  data/local/anomaly-session-01/evaluation-manifest.csv \
+  results/processed/anomaly-session-01-evaluation \
+  --split development --tolerance-ms 50
+```
+
+异常评价先最大化一对一匹配数量，再最小化预测点到人工异常区间的总误差，并报告 Precision、Recall、
+F1、false alarms/hour、P50/P95 detection delay 和正常切换期间的 FP。development 与 held-out 必须
+分开；阈值只能用 development 调整，冻结后 held-out 只做一次最终评价。评价器还会拒绝 capture
+integrity 不合格的 session，或在同一 split 中混合不同 detection-delay scope。
 
 交互采集五段相互独立的自录音频：
 

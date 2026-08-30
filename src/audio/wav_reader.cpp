@@ -225,6 +225,10 @@ AudioBuffer read_wav(const std::filesystem::path &path) {
   const auto bytes_per_sample = static_cast<std::size_t>(format.bits_per_sample / 8);
   AudioBuffer result{.sample_rate_hz = format.sample_rate_hz,
                      .source_channels = format.channels,
+                     .source_encoding = format.encoding == kIeeeFloatFormat
+                                            ? WavSampleEncoding::IeeeFloat
+                                            : WavSampleEncoding::IntegerPcm,
+                     .source_bits_per_sample = format.bits_per_sample,
                      .mono_samples = std::vector<float>(frame_count)};
 
   for (std::size_t frame = 0; frame < frame_count; ++frame) {

@@ -6,9 +6,13 @@
 
 namespace hero_audio {
 
+enum class WavSampleEncoding { IntegerPcm, IeeeFloat };
+
 struct AudioBuffer {
   std::uint32_t sample_rate_hz{};
   std::uint16_t source_channels{};
+  WavSampleEncoding source_encoding{WavSampleEncoding::IntegerPcm};
+  std::uint16_t source_bits_per_sample{};
   std::vector<float> mono_samples;
 
   [[nodiscard]] double duration_seconds() const noexcept;
