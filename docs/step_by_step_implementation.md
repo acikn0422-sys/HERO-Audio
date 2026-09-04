@@ -3,7 +3,8 @@
 本指南把操作分为 Terminal、C++、构建配置、GitHub 四部分。当前版本已完成 Apple Silicon
 开发环境、FFTW3f CPU 基线、WAV/mono、Spectral Flux、causal onset 检测、最优一对一 onset
 评价、整文件计时、首张诊断图，以及逐 256 samples 的流式处理与 hop 延迟统计。下一步是扩展到
-至少 5 段独立音频和正式标注数据，再接入真实 CoreAudio 输入。
+至少 5 段独立音频和正式标注数据。CoreAudio 实时输入代码已经完成，但真实录音与人工标注必须由
+实验者在现场采集。
 
 ## 0. 当前数据流和目录
 
@@ -316,7 +317,8 @@ for (const auto kind : hero_audio::available_fft_backends()) {
 ctest --preset macos-arm64-dev --output-on-failure
 ```
 
-当前应有 8 个 CTest 测试全部通过。
+当前在 macOS 上应有 10 个 CTest 测试全部通过；其中 live CLI 测试只检查构建和帮助输出，不在 CI
+录制麦克风。
 
 ### 2.7 StreamingProcessor 与逐 hop 计时
 
@@ -400,8 +402,10 @@ brew "fftw"
 3. 查找 FFTW3f；
 4. 找到时加入 `fftw_backend.cpp`、链接 `FFTW3f::fftw3f` 并定义
    `HERO_AUDIO_HAS_FFTW3F=1`；
-5. 创建 `hero-audio`、`hero-audio-eval`、`hero-audio-bench` 和 `hero-audio-stream` 可执行文件；
-6. 创建并注册 FFT、WAV、Spectral Flux、causal onset、流式处理、评价、benchmark 与 CLI 测试。
+5. 创建 `hero-audio`、`hero-audio-eval`、`hero-audio-bench`、`hero-audio-stream`，并在 macOS 创建
+   `hero-audio-live`；
+6. 创建并注册 FFT、WAV 读写、SPSC 队列、Spectral Flux、causal onset、流式处理、评价、benchmark
+   与 CLI 测试。
 
 项目把正式库名锁定为单精度 `fftw3f`，不能误链接 double 精度的 `fftw3`。
 
@@ -505,13 +509,16 @@ git push
 8. “时间—Spectral Flux—threshold—onset”可复现图。
 9. 逐 256 samples 的 `StreamingProcessor`；
 10. P50/P95/P99 hop compute、5.333 ms deadline 检查与离线一致性证明。
+11. macOS CoreAudio 实时输入与 64-hop 有界无锁 SPSC 队列；
+12. 实时 PCM16 录音、onset、逐 hop timing、capture integrity 和 summary 输出；
+13. 五段独立自录音频的交互采集脚本与 development/held-out 计划。
 
 下一阶段按顺序完成第一阶段剩余数据工作：
 
-1. 准备至少 5 段相互独立的合法测试音频；
-2. 分离调参与最终测试集合；
+1. 运行 `./scripts/capture_five_live_samples.sh 10`，采集至少 5 段相互独立的合法测试音频；
+2. 人工填写每段 `references.csv`，保持 development 与 held-out 分离；
 3. 在真实/公开标注数据上重复准确率、整文件 benchmark 与逐 hop benchmark；
-4. 之后增加 CoreAudio 输入适配器，单独测量设备/驱动/系统缓冲延迟；若研究“异常”，需再定义
-   异常标签与判断规则，不能把 onset 自动等同于异常。
+4. 若研究完整设备延迟，增加外部声源/回环共同时间基准；若研究“异常”，需再定义异常标签、正常
+   基线与判断规则，不能把 onset 自动等同于异常。
 
 上述闭环完成以前，不开始 CUDA、AI、FPGA 或运营优化模型。

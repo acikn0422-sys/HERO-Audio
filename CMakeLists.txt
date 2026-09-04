@@ -15,6 +15,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(hero_audio_core
   src/audio/wav_reader.cpp
+  src/audio/wav_writer.cpp
   src/benchmark/offline_benchmark.cpp
   src/benchmark/streaming_benchmark.cpp
   src/dsp/causal_onset.cpp
@@ -62,6 +63,28 @@ target_link_libraries(hero-audio-bench PRIVATE HEROAudio::core)
 add_executable(hero-audio-stream src/streaming_main.cpp)
 target_link_libraries(hero-audio-stream PRIVATE HEROAudio::core)
 
+if(APPLE)
+  find_library(HERO_AUDIO_COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
+  find_library(HERO_AUDIO_AUDIOUNIT_FRAMEWORK AudioUnit REQUIRED)
+  find_library(HERO_AUDIO_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+
+  add_library(hero_audio_coreaudio src/audio/coreaudio_input.cpp)
+  add_library(HEROAudio::coreaudio ALIAS hero_audio_coreaudio)
+  target_link_libraries(hero_audio_coreaudio
+    PUBLIC HEROAudio::core
+    PRIVATE
+      ${HERO_AUDIO_COREAUDIO_FRAMEWORK}
+      ${HERO_AUDIO_AUDIOUNIT_FRAMEWORK}
+      ${HERO_AUDIO_COREFOUNDATION_FRAMEWORK}
+  )
+  target_compile_options(hero_audio_coreaudio PRIVATE
+    $<$<CXX_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic;-Wconversion>
+  )
+
+  add_executable(hero-audio-live src/live_main.cpp)
+  target_link_libraries(hero-audio-live PRIVATE HEROAudio::coreaudio)
+endif()
+
 if(HERO_AUDIO_BUILD_TESTS)
   include(CTest)
   add_executable(hero_audio_tests tests/test_fft.cpp)
@@ -92,6 +115,10 @@ if(HERO_AUDIO_BUILD_TESTS)
   target_link_libraries(streaming_processor_tests PRIVATE HEROAudio::core)
   add_test(NAME streaming_processor_correctness COMMAND streaming_processor_tests)
 
+  add_executable(live_support_tests tests/test_live_support.cpp)
+  target_link_libraries(live_support_tests PRIVATE HEROAudio::core)
+  add_test(NAME live_support_correctness COMMAND live_support_tests)
+
   add_test(
     NAME onset_evaluation_cli
     COMMAND hero-audio-eval
@@ -102,4 +129,11 @@ if(HERO_AUDIO_BUILD_TESTS)
   set_tests_properties(onset_evaluation_cli PROPERTIES
     PASS_REGULAR_EXPRESSION "f1: 0.800000"
   )
+
+  if(APPLE)
+    add_test(NAME live_cli_help COMMAND hero-audio-live --help)
+    set_tests_properties(live_cli_help PROPERTIES
+      PASS_REGULAR_EXPRESSION "Creates capture.wav"
+    )
+  endif()
 endif()

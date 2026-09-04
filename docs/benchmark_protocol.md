@@ -41,6 +41,39 @@ Silicon 实验机。
 相同 frame/onset 数、相同时间语义，flux 在固定绝对/相对浮点容差内相等，onset 事件也必须相等。
 这项检查证明新增状态机没有改变算法；它不是检测准确率评价，后者仍需人工标注与一对一匹配。
 
+## CoreAudio live 指标
+
+live 模式使用当前 macOS 默认输入设备及其原生整数采样率。AUHAL 把设备数据转换为 mono float32，
+callback 每累积 256 samples 形成一个 hop。callback 只允许执行预分配 `AudioUnitRender`、样本复制、
+聚合、原生无锁 atomic 计数和非阻塞 SPSC 入队；不得执行 FFT、日志、文件 I/O、互斥锁或内存申请。
+
+队列固定保存 64 个 hop。生产者是 CoreAudio callback，消费者是主分析线程。队列满时 callback 丢弃
+当前完整 hop 并增加 `dropped_hop_count`，绝不等待消费者。消费者通过 sequence 与绝对 sample index
+发现断点，执行以下恢复：
+
+1. 在保存的 WAV 时间轴插入等长静音；
+2. 重置 Spectral Flux 和 causal detector 历史；
+3. 从下一项连续数据建立新 segment；
+4. 不跨断点产生 onset。
+
+正式 live session 要求 `dropped_hop_count=0` 且 `render_error_count=0`，否则
+`capture_integrity_pass=false`，该 session 不得用于正式准确率或延迟结论。
+
+live 模式分列三种时间：
+
+| 字段 | 定义 |
+|---|---|
+| `compute_ms` | `StreamingProcessor::push_hop()` 调用时间 |
+| `callback_to_consumer_ms` | CoreAudio callback 入口到消费者开始处理 |
+| `estimated_software_detection_delay_ms` | 算法结构延迟 + callback 到消费者 + 当前 hop compute |
+
+第三项仍不包含声音进入麦克风到 CoreAudio callback 之前的硬件、设备缓冲和驱动延迟，因此不能称为
+完整声学端到端延迟。设备端到端测量需要外部声源/回环和共同时间基准，必须使用新的指标。
+
+live P95 hop compute 仍必须严格小于实际 `256 / sample_rate` 周期。检测到至少一个人工可确认事件时，
+报告 estimated software detection delay 的 P95，并与 30 ms 初始目标比较；没有事件时该字段为 JSON
+`null`，不得人为记为通过。
+
 整段文件同时报告 median、P95、P99 和 real-time factor。正式实现把 FFT backend/plan 创建放在
 计时区间外并单独报告 `backend_initialization_ms`。每个 steady-state run 的边界是：
 
