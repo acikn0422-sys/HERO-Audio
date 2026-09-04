@@ -1,8 +1,8 @@
 # HERO-Audio v0.1 分步骤实现指南
 
 本指南把操作分为 Terminal、C++、构建配置、GitHub 四部分。当前版本已完成 Apple Silicon
-开发环境、FFTW3f CPU 基线、WAV/mono、Spectral Flux、causal onset 检测，以及最优一对一
-onset 评价。整文件计时和绘图仍属于下一阶段。
+开发环境、FFTW3f CPU 基线、WAV/mono、Spectral Flux、causal onset 检测、最优一对一 onset
+评价、整文件计时和首张诊断图。下一步是扩展到至少 5 段独立音频和正式标注数据。
 
 ## 0. 当前数据流和目录
 
@@ -362,8 +362,8 @@ brew "fftw"
 3. 查找 FFTW3f；
 4. 找到时加入 `fftw_backend.cpp`、链接 `FFTW3f::fftw3f` 并定义
    `HERO_AUDIO_HAS_FFTW3F=1`；
-5. 创建 `hero-audio` 和 `hero-audio-eval` 可执行文件；
-6. 创建并注册 FFT、WAV、Spectral Flux、causal onset、评价单元测试与评价 CLI 测试。
+5. 创建 `hero-audio`、`hero-audio-eval` 和 `hero-audio-bench` 可执行文件；
+6. 创建并注册 FFT、WAV、Spectral Flux、causal onset、评价、benchmark 单元测试与 CLI 测试。
 
 项目把正式库名锁定为单精度 `fftw3f`，不能误链接 double 精度的 `fftw3`。
 
@@ -461,11 +461,14 @@ git push
 3. frame/hop 和 Hann window；
 4. FFT magnitude、Spectral Flux 与 CSV；
 5. causal adaptive threshold、peak picking 与 onset CSV；
-6. 最优一对一 onset matching、Precision、Recall 与 F1。
+6. 最优一对一 onset matching、Precision、Recall 与 F1；
+7. 整文件 median、P95、P99 与 RTF；
+8. “时间—Spectral Flux—threshold—onset”可复现图。
 
-下一阶段按顺序实现：
+下一阶段按顺序完成第一阶段剩余数据工作：
 
-1. 整文件计时；
-2. 第一张“时间—Spectral Flux—threshold—onset”图。
+1. 准备至少 5 段相互独立的合法测试音频；
+2. 分离调参与最终测试集合；
+3. 在真实/公开标注数据上重复准确率与整文件 benchmark。
 
 上述闭环完成以前，不开始 CUDA、AI、FPGA 或运营优化模型。

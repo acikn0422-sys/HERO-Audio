@@ -25,6 +25,9 @@
     "warmup_runs": 3,
     "measured_runs": 5,
     "include_plan_creation_in_steady_state": false,
+    "whole_file_metric": "wav_read_to_onset_csv_serialized",
+    "whole_file_output_sink": "in_memory",
+    "percentile_method": "linear_type_7",
     "report_percentiles": [50, 95, 99]
   }
 }

@@ -188,6 +188,33 @@ bool test_csv_output() {
   return output.str() == expected;
 }
 
+bool test_diagnostics_follow_detector_state() {
+  const auto analysis = hero_audio::analyze_causal_onsets(make_frames({0.0F, 2.0F, 10.0F, 0.0F}));
+  return analysis.events.size() == 1 && analysis.diagnostics.size() == 4 &&
+         !analysis.diagnostics[0].causal_threshold.has_value() &&
+         near(*analysis.diagnostics[1].causal_threshold, 0.0) &&
+         analysis.diagnostics[1].above_threshold &&
+         analysis.diagnostics[1].pending_peak_after_frame &&
+         near(*analysis.diagnostics[2].causal_threshold, 2.5) &&
+         analysis.diagnostics[2].pending_peak_after_frame &&
+         analysis.diagnostics[3].emitted_onset_time_seconds.has_value() &&
+         near(*analysis.diagnostics[3].emitted_onset_time_seconds,
+              analysis.events[0].onset_time_seconds);
+}
+
+bool test_diagnostics_csv_output() {
+  const auto analysis = hero_audio::analyze_causal_onsets(make_frames({0.0F, 2.0F, 0.0F}));
+  std::ostringstream output;
+  hero_audio::write_onset_diagnostics_csv(output, analysis.diagnostics);
+  const std::string expected =
+      "frame_index,frame_center_seconds,available_seconds,spectral_flux,causal_threshold,"
+      "above_threshold,pending_peak_after_frame,emitted_onset_time_seconds\n"
+      "0,0.010666667,0.021333333,0.000000000,,0,0,\n"
+      "1,0.016000000,0.026666667,2.000000000,0.000000000,1,1,\n"
+      "2,0.021333333,0.032000000,0.000000000,2.500000000,0,0,0.016000000\n";
+  return output.str() == expected;
+}
+
 } // namespace
 
 int main() {
@@ -205,6 +232,8 @@ int main() {
       {"nonconsecutive frames", test_rejects_nonconsecutive_frames},
       {"invalid input", test_rejects_invalid_input},
       {"CSV output", test_csv_output},
+      {"diagnostic state", test_diagnostics_follow_detector_state},
+      {"diagnostic CSV", test_diagnostics_csv_output},
   };
   for (const auto &[name, test] : tests) {
     if (!test()) {

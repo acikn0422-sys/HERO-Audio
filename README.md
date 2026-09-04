@@ -10,11 +10,15 @@ macOS／Apple Silicon；第一阶段仅实现和验证 C++ CPU 检测闭环。
 - 项目内 radix-2 FFT 只用于正确性验证；
 - 48 kHz、frame 1024、hop 256、Hann window；
 - causal threshold；
-- onset 评价采用 ±50 ms、最大匹配数优先且总误差最小的一对一匹配。
+- onset 评价采用 ±50 ms、最大匹配数优先且总误差最小的一对一匹配；
+- 离线整文件 benchmark 报告 median、P95、P99 和 RTF；
+- 逐帧 diagnostics 支持绘制 Spectral Flux、causal threshold 与 onset。
 
 完整指标定义见 [docs/benchmark_protocol.md](docs/benchmark_protocol.md)。
 从 Terminal、C++、CMake 到 GitHub 首次发布的分步说明见
 [docs/step_by_step_implementation.md](docs/step_by_step_implementation.md)。
+本阶段完整计时边界、C++ 源码结构和绘图字段见
+[docs/offline_benchmark_and_plot.md](docs/offline_benchmark_and_plot.md)。
 
 GitHub Actions 只验证跨机器构建和数值正确性，不生成或发布性能结论。正式 Apple Silicon benchmark
 必须在本地 M 系列机器上运行，并保存 `scripts/capture_system_info.sh` 的输出。
@@ -43,6 +47,8 @@ ctest --preset macos-arm64-dev
 ./build/macos-arm64-dev/hero-audio path/to/input.wav
 ./build/macos-arm64-dev/hero-audio path/to/input.wav results/raw/spectral-flux.csv
 ./build/macos-arm64-dev/hero-audio path/to/input.wav results/raw/spectral-flux.csv results/raw/onsets.csv
+./build/macos-arm64-dev/hero-audio path/to/input.wav results/raw/spectral-flux.csv \
+  results/raw/onsets.csv results/raw/diagnostics.csv
 ```
 
 当前 WAV reader 支持 little-endian RIFF/WAVE、整数 PCM 8/16/24/32-bit、IEEE float32
@@ -72,6 +78,37 @@ reference CSV 可以是无表头的每行一个秒数，也可以包含 `onset_t
 一对一 TP 数量，再最小化总绝对时间误差；重复预测不能重复匹配同一标注。没有预测或没有标注造成
 指标分母为零时，对应 Precision、Recall 和 F1 保守记为 0。
 
+## 整文件 benchmark 与第一张图
+
+安装隔离的 Python 绘图环境，然后运行完整合成样例：
+
+```bash
+./scripts/bootstrap_analysis.sh
+./scripts/run_synthetic_demo.sh
+```
+
+脚本会生成具有 5 个已知 onset 的 48 kHz WAV，运行正式 Release+FFTW3f 检测和一对一评价，执行
+3 次 warm-up 与至少 5 次 measured runs，并生成：
+
+```text
+results/raw/synthetic-demo/offline-benchmark-runs.csv
+results/processed/synthetic-demo/offline-benchmark-summary.json
+results/processed/synthetic-demo/spectral-flux-threshold-onsets.png
+```
+
+单独运行 benchmark：
+
+```bash
+./build/macos-arm64-release/hero-audio-bench \
+  path/to/input.wav \
+  results/raw/offline-benchmark-runs.csv \
+  results/processed/offline-benchmark-summary.json \
+  --warmup 3 --runs 5 --backend fftw
+```
+
+FFTW plan 创建时间单独报告。每个 steady-state run 从开始读取 WAV 计时，到所有 onset 完成 CSV
+序列化后停止；benchmark 结果文件本身的磁盘写入不进入该主指标。
+
 正式 CPU 基准使用 release preset；它会在 FFTW3f 缺失时直接失败，避免误用参考 FFT：
 
 ```bash
@@ -88,12 +125,13 @@ ctest --preset macos-arm64-release
 include/hero_audio/       公共 C++ 接口
 src/fft/                  FFT 后端实现与工厂
 src/audio/                WAV 解码与 mono 转换
+src/benchmark/            整文件重复计时与统计
 src/dsp/                  Hann、分帧、Spectral Flux 与 causal onset
 src/evaluation/           最优一对一匹配与准确率指标
 tests/                    正确性测试
 configs/                  版本化实验配置
 docs/                     指标与实验协议
-scripts/                  环境安装和元数据采集
+scripts/                  环境安装、合成数据、绘图和元数据采集
 results/raw/              不修改的原始结果
 results/processed/        可重新生成的处理结果
 ```

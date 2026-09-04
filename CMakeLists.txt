@@ -15,6 +15,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(hero_audio_core
   src/audio/wav_reader.cpp
+  src/benchmark/offline_benchmark.cpp
   src/dsp/causal_onset.cpp
   src/dsp/spectral_flux.cpp
   src/evaluation/onset_evaluation.cpp
@@ -53,6 +54,9 @@ target_link_libraries(hero-audio PRIVATE HEROAudio::core)
 add_executable(hero-audio-eval src/evaluate_main.cpp)
 target_link_libraries(hero-audio-eval PRIVATE HEROAudio::core)
 
+add_executable(hero-audio-bench src/benchmark_main.cpp)
+target_link_libraries(hero-audio-bench PRIVATE HEROAudio::core)
+
 if(HERO_AUDIO_BUILD_TESTS)
   include(CTest)
   add_executable(hero_audio_tests tests/test_fft.cpp)
@@ -74,6 +78,10 @@ if(HERO_AUDIO_BUILD_TESTS)
   add_executable(onset_evaluation_tests tests/test_onset_evaluation.cpp)
   target_link_libraries(onset_evaluation_tests PRIVATE HEROAudio::core)
   add_test(NAME onset_evaluation_correctness COMMAND onset_evaluation_tests)
+
+  add_executable(offline_benchmark_tests tests/test_offline_benchmark.cpp)
+  target_link_libraries(offline_benchmark_tests PRIVATE HEROAudio::core)
+  add_test(NAME offline_benchmark_correctness COMMAND offline_benchmark_tests)
 
   add_test(
     NAME onset_evaluation_cli
