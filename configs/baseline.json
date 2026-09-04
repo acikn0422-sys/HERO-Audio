@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "audio": {
     "sample_rate_hz": 48000,
     "channels": 1,
@@ -52,7 +52,13 @@
       "queue_overflow_policy": "drop_hop_count_gap_reset_processor",
       "recording_format": "mono_pcm16_wav",
       "capture_integrity_requirement": "zero_dropped_hops_and_zero_render_errors",
-      "device_and_driver_latency_included": false
+      "device_and_driver_latency_included": false,
+      "transient_anomaly_layer": {
+        "config": "configs/transient_anomaly_v1.json",
+        "default_operating_state": "steady",
+        "baseline_seconds": 30.0,
+        "core_hop_compute_metric_unchanged": true
+      }
     }
   }
 }

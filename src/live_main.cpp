@@ -1,3 +1,6 @@
+#include "hero_audio/acoustic_features.hpp"
+#include "hero_audio/anomaly_detector.hpp"
+#include "hero_audio/anomaly_output.hpp"
 #include "hero_audio/coreaudio_input.hpp"
 #include "hero_audio/fft_backend.hpp"
 #include "hero_audio/offline_benchmark.hpp"
@@ -34,6 +37,8 @@ struct Arguments {
   std::filesystem::path output_directory;
   double duration_seconds{10.0};
   std::string backend{"auto"};
+  double anomaly_baseline_seconds{30.0};
+  hero_audio::OperatingState operating_state{hero_audio::OperatingState::Steady};
 };
 
 struct LiveMeasurement {
@@ -65,8 +70,10 @@ struct LiveEvent {
 
 [[nodiscard]] std::string usage() {
   return "Usage: hero-audio-live output-directory [--seconds 10] "
-         "[--backend auto|fftw|reference]\n"
-         "\nCreates capture.wav, onsets.csv, hop-measurements.csv and summary.json.\n";
+         "[--backend auto|fftw|reference] [--anomaly-baseline-seconds 30] "
+         "[--operating-state idle|startup|steady|shutdown]\n"
+         "\nCreates capture.wav, onset/measurement outputs, and separate transient "
+         "anomaly audit outputs.\n";
 }
 
 [[nodiscard]] double parse_duration(std::string_view text) {
@@ -77,6 +84,19 @@ struct LiveEvent {
   if (errno != 0 || end != owned.c_str() + owned.size() || !std::isfinite(value) ||
       value < 0.25 || value > 3600.0) {
     throw std::invalid_argument("--seconds must be a finite number in [0.25, 3600]");
+  }
+  return value;
+}
+
+[[nodiscard]] double parse_baseline_duration(std::string_view text) {
+  std::string owned(text);
+  char *end = nullptr;
+  errno = 0;
+  const double value = std::strtod(owned.c_str(), &end);
+  if (errno != 0 || end != owned.c_str() + owned.size() || !std::isfinite(value) ||
+      value < 0.1 || value > 3600.0) {
+    throw std::invalid_argument(
+        "--anomaly-baseline-seconds must be a finite number in [0.1, 3600]");
   }
   return value;
 }
@@ -100,6 +120,10 @@ struct LiveEvent {
           result.backend != "reference") {
         throw std::invalid_argument("--backend must be auto, fftw, or reference");
       }
+    } else if (option == "--anomaly-baseline-seconds") {
+      result.anomaly_baseline_seconds = parse_baseline_duration(value);
+    } else if (option == "--operating-state") {
+      result.operating_state = hero_audio::parse_operating_state(value);
     } else {
       throw std::invalid_argument("Unknown option: " + std::string(option));
     }
@@ -322,6 +346,86 @@ void write_summary(const std::filesystem::path &path, const Arguments &arguments
   }
 }
 
+void write_robust_stats_json(std::ostream &output,
+                             const hero_audio::RobustFeatureStats &stats) {
+  output << "{\"median\": " << stats.median
+         << ", \"median_absolute_deviation\": "
+         << stats.median_absolute_deviation << ", \"scale\": " << stats.scale
+         << '}';
+}
+
+void write_anomaly_summary(
+    const std::filesystem::path &path, const Arguments &arguments,
+    const hero_audio::TransientAnomalyDetector &detector,
+    const hero_audio::CoreAudioCaptureStats &capture,
+    std::span<const double> anomaly_analysis_times,
+    std::size_t calibration_reset_count) {
+  std::ofstream output(path, std::ios::trunc);
+  if (!output) {
+    throw std::runtime_error("Unable to open anomaly summary JSON: " + path.string());
+  }
+  const auto &config = detector.config();
+  const auto p95_analysis = percentile_or_none(anomaly_analysis_times, 0.95);
+  const bool capture_integrity =
+      capture.dropped_hop_count == 0 && capture.render_error_count == 0;
+
+  output << std::fixed << std::setprecision(9) << "{\n"
+         << "  \"schema_version\": 1,\n"
+         << "  \"model\": \"steady_state_transient_anomaly_v1\",\n"
+         << "  \"status\": \"research_prototype_requires_labelled_validation\",\n"
+         << "  \"scope\": \"unexpected_transient_events_during_declared_steady_operation\",\n"
+         << "  \"not_a_claim_of\": \"universal_anomaly_or_fault_type_diagnosis\",\n"
+         << "  \"operating_state\": \""
+         << hero_audio::to_string(arguments.operating_state) << "\",\n"
+         << "  \"baseline_human_assumption\": \"first uninterrupted steady interval is verified normal\",\n"
+         << "  \"baseline_seconds_requested\": " << config.baseline_seconds << ",\n"
+         << "  \"baseline_frames_required\": "
+         << detector.baseline_frames_required() << ",\n"
+         << "  \"baseline_frames_collected\": "
+         << detector.baseline_frames_collected() << ",\n"
+         << "  \"baseline_complete\": "
+         << (detector.baseline().has_value() ? "true" : "false") << ",\n"
+         << "  \"baseline_policy_after_completion\": \"frozen\",\n"
+         << "  \"calibration_reset_count\": " << calibration_reset_count << ",\n"
+         << "  \"requires_confirmed_causal_onset\": true,\n"
+         << "  \"flux_positive_z_threshold\": " << config.flux_z_threshold << ",\n"
+         << "  \"rms_positive_z_threshold\": " << config.rms_z_threshold << ",\n"
+         << "  \"peak_positive_z_threshold\": " << config.peak_z_threshold << ",\n"
+         << "  \"combined_score_threshold\": 1.000000000,\n"
+         << "  \"anomaly_refractory_seconds\": "
+         << config.anomaly_refractory_seconds << ",\n"
+         << "  \"scored_onset_count\": " << detector.scored_event_count() << ",\n"
+         << "  \"above_threshold_candidate_count\": "
+         << detector.anomaly_candidate_count() << ",\n"
+         << "  \"emitted_anomaly_count\": "
+         << detector.emitted_anomaly_count() << ",\n"
+         << "  \"p95_downstream_anomaly_analysis_ms\": ";
+  write_optional_json_number(output, p95_analysis);
+  output << ",\n  \"core_hop_compute_metric_includes_anomaly_layer\": false,\n"
+         << "  \"capture_integrity_pass\": "
+         << (capture_integrity ? "true" : "false") << ",\n"
+         << "  \"labelled_validation_required_before_accuracy_claims\": true,\n"
+         << "  \"baseline_statistics\": ";
+  if (!detector.baseline().has_value()) {
+    output << "null\n";
+  } else {
+    const auto &baseline = *detector.baseline();
+    output << "{\n    \"spectral_flux\": ";
+    write_robust_stats_json(output, baseline.spectral_flux);
+    output << ",\n    \"frame_rms\": ";
+    write_robust_stats_json(output, baseline.frame_rms);
+    output << ",\n    \"peak_absolute\": ";
+    write_robust_stats_json(output, baseline.peak_absolute);
+    output << ",\n    \"zero_crossing_rate\": ";
+    write_robust_stats_json(output, baseline.zero_crossing_rate);
+    output << "\n  }\n";
+  }
+  output << "}\n";
+  if (!output) {
+    throw std::runtime_error("Unable to write anomaly summary JSON");
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -350,30 +454,55 @@ int main(int argc, char **argv) {
                                  static_cast<double>(sample_rate_hz);
     hero_audio::StreamingProcessor processor(
         *fft, hero_audio::StreamingProcessorConfig{.sample_rate_hz = sample_rate_hz});
+    hero_audio::AcousticFeatureExtractor feature_extractor(
+        hero_audio::AcousticFeatureExtractorConfig{
+            .frame_size_samples = 1024,
+            .hop_size_samples = hero_audio::kLiveHopSize,
+        });
+    hero_audio::TransientAnomalyDetector anomaly_detector(
+        hero_audio::TransientAnomalyConfig{
+            .sample_rate_hz = sample_rate_hz,
+            .hop_size_samples = hero_audio::kLiveHopSize,
+            .baseline_seconds = arguments.anomaly_baseline_seconds,
+        });
 
     const auto wav_path = arguments.output_directory / "capture.wav";
     const auto event_path = arguments.output_directory / "onsets.csv";
     const auto measurement_path = arguments.output_directory / "hop-measurements.csv";
     const auto summary_path = arguments.output_directory / "summary.json";
-    prepare_output_directory(arguments.output_directory,
-                             {wav_path, event_path, measurement_path, summary_path});
+    const auto anomaly_frame_path =
+        arguments.output_directory / "anomaly-frames.csv";
+    const auto anomaly_event_path =
+        arguments.output_directory / "anomaly-events.csv";
+    const auto anomaly_summary_path =
+        arguments.output_directory / "anomaly-summary.json";
+    prepare_output_directory(
+        arguments.output_directory,
+        {wav_path, event_path, measurement_path, summary_path, anomaly_frame_path,
+         anomaly_event_path, anomaly_summary_path});
 
     hero_audio::Pcm16WavWriter wav(wav_path, sample_rate_hz);
     std::ofstream events(event_path, std::ios::trunc);
     std::ofstream measurements(measurement_path, std::ios::trunc);
-    if (!events || !measurements) {
+    std::ofstream anomaly_frames(anomaly_frame_path, std::ios::trunc);
+    std::ofstream anomaly_events(anomaly_event_path, std::ios::trunc);
+    if (!events || !measurements || !anomaly_frames || !anomaly_events) {
       throw std::runtime_error("Unable to open live CSV output files");
     }
     write_event_header(events);
     write_measurement_header(measurements);
+    hero_audio::write_anomaly_frame_csv_header(anomaly_frames);
+    hero_audio::write_anomaly_event_csv_header(anomaly_events);
 
     std::vector<double> steady_compute_times;
     std::vector<double> queue_wait_times;
     std::vector<double> detection_delays;
+    std::vector<double> anomaly_analysis_times;
     steady_compute_times.reserve(
         static_cast<std::size_t>(arguments.duration_seconds * sample_rate_hz /
                                  hero_audio::kLiveHopSize));
     queue_wait_times.reserve(steady_compute_times.capacity());
+    anomaly_analysis_times.reserve(steady_compute_times.capacity());
 
     std::uint64_t expected_sequence = 0;
     std::uint64_t expected_first_sample_index = 0;
@@ -383,6 +512,8 @@ int main(int argc, char **argv) {
     std::size_t processor_reset_count = 0;
     std::size_t deadline_miss_count = 0;
     std::size_t onset_count = 0;
+    std::size_t anomaly_calibration_reset_count = 0;
+    bool anomaly_baseline_completion_announced = false;
 
     auto consume = [&](const hero_audio::LiveAudioHopBlock &block) {
       const bool discontinuity = block.sequence != expected_sequence ||
@@ -398,6 +529,10 @@ int main(int argc, char **argv) {
 
       if (discontinuity) {
         processor.reset();
+        feature_extractor.reset();
+        if (anomaly_detector.handle_discontinuity()) {
+          ++anomaly_calibration_reset_count;
+        }
         segment_start_sample = block.first_sample_index;
         ++segment_index;
         ++discontinuity_count;
@@ -413,6 +548,19 @@ int main(int argc, char **argv) {
       const auto compute_end = Clock::now();
       const double compute_ms =
           std::chrono::duration<double, std::milli>(compute_end - compute_start).count();
+
+      // Keep the established hop-compute metric above unchanged. Feature
+      // extraction and anomaly scoring are a downstream measurement scope.
+      const auto anomaly_start = Clock::now();
+      const auto acoustic_features = feature_extractor.process_hop(block.samples, result);
+      std::optional<hero_audio::TransientAnomalyFrameResult> anomaly_result;
+      if (acoustic_features.has_value()) {
+        anomaly_result = anomaly_detector.process(
+            *acoustic_features, result.onset, arguments.operating_state);
+      }
+      const auto anomaly_end = Clock::now();
+      const double anomaly_analysis_ms =
+          std::chrono::duration<double, std::milli>(anomaly_end - anomaly_start).count();
       const bool steady_state = result.flux_frame.has_value();
       const bool deadline_met = compute_ms < hop_period_ms;
       if (steady_state) {
@@ -422,6 +570,31 @@ int main(int argc, char **argv) {
         }
       }
       queue_wait_times.push_back(queue_wait_ms);
+      if (acoustic_features.has_value()) {
+        anomaly_analysis_times.push_back(anomaly_analysis_ms);
+        const double segment_offset_seconds =
+            static_cast<double>(segment_start_sample) / sample_rate_hz;
+        hero_audio::write_anomaly_frame_csv_row(
+            anomaly_frames, block.sequence, segment_index, segment_offset_seconds,
+            arguments.operating_state, *acoustic_features, *anomaly_result,
+            anomaly_analysis_ms);
+        if (anomaly_result->scored_event.has_value() &&
+            anomaly_result->scored_event->emitted_anomaly) {
+          const auto &anomaly = *anomaly_result->scored_event;
+          const double anomaly_delay_ms =
+              (anomaly.emitted_at_seconds - anomaly.onset_time_seconds) * 1000.0 +
+              queue_wait_ms + compute_ms + anomaly_analysis_ms;
+          hero_audio::write_anomaly_event_csv_row(
+              anomaly_events, block.sequence, segment_index,
+              segment_offset_seconds, arguments.operating_state, anomaly,
+              anomaly_delay_ms);
+        }
+        if (anomaly_detector.baseline().has_value() &&
+            !anomaly_baseline_completion_announced) {
+          std::cout << "anomaly_baseline_complete: monitoring has started\n";
+          anomaly_baseline_completion_announced = true;
+        }
+      }
 
       write_measurement(
           measurements,
@@ -477,7 +650,11 @@ int main(int argc, char **argv) {
               << "hop_period_ms: " << std::fixed << std::setprecision(6)
               << hop_period_ms << '\n'
               << "listening_seconds: " << arguments.duration_seconds
-              << " (press Ctrl-C to stop early)\n";
+              << " (press Ctrl-C to stop early)\n"
+              << "operating_state: "
+              << hero_audio::to_string(arguments.operating_state) << '\n'
+              << "verified_normal_baseline_seconds: "
+              << arguments.anomaly_baseline_seconds << '\n';
 
     const auto wall_start = Clock::now();
     input.start();
@@ -511,7 +688,9 @@ int main(int argc, char **argv) {
     wav.finalize();
     events.flush();
     measurements.flush();
-    if (!events || !measurements) {
+    anomaly_frames.flush();
+    anomaly_events.flush();
+    if (!events || !measurements || !anomaly_frames || !anomaly_events) {
       throw std::runtime_error("Unable to finalize live CSV output files");
     }
     if (capture.rendered_frame_count == 0 || steady_compute_times.empty()) {
@@ -529,6 +708,9 @@ int main(int argc, char **argv) {
                   queue_wait_times, detection_delays, deadline_miss_count,
                   discontinuity_count, processor_reset_count, onset_count,
                   wav.sample_count());
+    write_anomaly_summary(anomaly_summary_path, arguments, anomaly_detector,
+                          capture, anomaly_analysis_times,
+                          anomaly_calibration_reset_count);
 
     const double p95_compute = hero_audio::linear_percentile(steady_compute_times, 0.95);
     std::cout << "capture_complete: true\n"
@@ -537,6 +719,12 @@ int main(int argc, char **argv) {
               << "dropped_hops: " << capture.dropped_hop_count << '\n'
               << "render_errors: " << capture.render_error_count << '\n'
               << "detected_onsets: " << onset_count << '\n'
+              << "anomaly_baseline_complete: "
+              << (anomaly_detector.baseline().has_value() ? "true" : "false")
+              << '\n'
+              << "scored_onsets: " << anomaly_detector.scored_event_count() << '\n'
+              << "emitted_transient_anomalies: "
+              << anomaly_detector.emitted_anomaly_count() << '\n'
               << "p95_hop_compute_ms: " << p95_compute << '\n'
               << "p95_within_hop_period: "
               << (p95_compute < hop_period_ms ? "true" : "false") << '\n'
@@ -546,6 +734,9 @@ int main(int argc, char **argv) {
                       : "FAIL")
               << '\n'
               << "output_directory: " << arguments.output_directory.string() << '\n';
+    if (!anomaly_detector.baseline().has_value()) {
+      std::cout << "warning: anomaly baseline incomplete; no anomaly conclusion is valid\n";
+    }
     if (backend_kind == hero_audio::FFTBackendKind::Reference) {
       std::cout << "warning: reference-radix2 is not the official CPU performance baseline\n";
     }
