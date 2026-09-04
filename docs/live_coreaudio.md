@@ -22,6 +22,7 @@ main consumer thread
     ├── StreamingProcessor: Hann → FFTW → flux → causal onset
     ├── downstream feature extraction → frozen-baseline transient score
     ├── capture.wav (PCM16)
+    ├── capture-analysis-f32.wav (IEEE float32, deterministic replay)
     ├── hop-measurements.csv
     ├── onsets.csv
     ├── summary.json
@@ -38,7 +39,7 @@ variable；ARM64/macOS 上使用的 atomic 类型由编译期 `is_always_lock_fr
 - `include/hero_audio/spsc_hop_queue.hpp`：固定容量 SPSC queue 与 `AudioHopBlock`；
 - `include/hero_audio/coreaudio_input.hpp`：平台接口、设备元数据与 capture stats；
 - `src/audio/coreaudio_input.cpp`：AUHAL 配置、预分配 render 和 callback 聚合；
-- `include/hero_audio/wav_writer.hpp`、`src/audio/wav_writer.cpp`：消费线程 PCM16 写盘；
+- `include/hero_audio/wav_writer.hpp`、`src/audio/wav_writer.cpp`：消费线程 PCM16 与 IEEE float32 写盘；
 - `src/live_main.cpp`：实时消费、检测、断点恢复、CSV/JSON；
 - `tests/test_live_support.cpp`：队列容量/顺序、50,000-hop 并发传输和 WAV round trip；
 - `scripts/capture_five_live_samples.sh`：五次人工控制的独立采集。
@@ -96,7 +97,9 @@ System Settings → Privacy & Security → Microphone → Terminal
 
 ## 6. 输出解释
 
-`capture.wav` 是 mono PCM16。若发生已知断点，对应时间会写入静音。`hop-measurements.csv` 每行包含：
+`capture.wav` 是供人工回听的 mono PCM16；`capture-analysis-f32.wav` 是不经 PCM16 量化的 mono IEEE
+float32 正式回放输入。若发生已知断点，两者的对应时间都会补静音。完整性不合格的 session 仍不能
+进入正式评价。`hop-measurements.csv` 每行包含：
 
 - absolute sequence/sample/time；
 - 该行之前是否发生 discontinuity；
@@ -139,3 +142,4 @@ onset 只回答“频谱是否突然变化”，并不知道变化是正常拍�
 
 这仍不等于故障类型识别。必须用独立人工标签报告 event Precision/Recall/F1、false alarms/hour 和检测
 延迟后，才能作准确率陈述；无标签 live 输出只能证明实时计算闭环成立。
+完整的 float32 回放、manifest 和 held-out 评价步骤见 `docs/anomaly_replay_and_evaluation.md`。

@@ -294,13 +294,16 @@ bool test_anomaly_csv_column_alignment() {
   std::ostringstream event_row;
   hero_audio::write_anomaly_event_csv_header(event_header);
   hero_audio::write_anomaly_event_csv_row(
-      event_row, 10, 2, 5.0, hero_audio::OperatingState::Steady, event, 151.0);
+      event_row, 10, 2, 5.0, hero_audio::OperatingState::Steady, event,
+      "software_after_callback_estimate", 151.0);
   const auto event_header_fields = csv_fields(event_header.str());
   const auto event_row_fields = csv_fields(event_row.str());
-  return event_header_fields.size() == 18 &&
+  return event_header_fields.size() == 19 &&
          event_row_fields.size() == event_header_fields.size() &&
          event_row_fields[2] == "unexpected_transient" &&
-         event_row_fields[3] == "steady" && event_row_fields[9] == "spectral_flux";
+         event_row_fields[3] == "steady" &&
+         event_row_fields[7] == "software_after_callback_estimate" &&
+         event_row_fields[10] == "spectral_flux";
 }
 
 } // namespace

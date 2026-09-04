@@ -402,8 +402,8 @@ brew "fftw"
 3. 查找 FFTW3f；
 4. 找到时加入 `fftw_backend.cpp`、链接 `FFTW3f::fftw3f` 并定义
    `HERO_AUDIO_HAS_FFTW3F=1`；
-5. 创建 `hero-audio`、`hero-audio-eval`、`hero-audio-bench`、`hero-audio-stream`，并在 macOS 创建
-   `hero-audio-live`；
+5. 创建 `hero-audio`、`hero-audio-eval`、`hero-audio-bench`、`hero-audio-stream`、
+   `hero-audio-anomaly-replay`、`hero-audio-anomaly-eval`，并在 macOS 创建 `hero-audio-live`；
 6. 创建并注册 FFT、WAV 读写、SPSC 队列、Spectral Flux、causal onset、流式处理、稳态瞬态异常、
    评价、benchmark 与 CLI 测试。
 
@@ -515,13 +515,16 @@ git push
 14. 不重复 FFT 的流式声学特征提取；
 15. 30 秒 verified-normal median/MAD、冻结基线、steady-state gate 与 confirmed-onset 异常评分；
 16. 独立 `anomaly-frames.csv`、`anomaly-events.csv` 和 `anomaly-summary.json` 审计输出。
+17. live mono IEEE float32 bit-exact 分析录音与相同 DSP 主链的确定性回放；
+18. 人工异常区间标签、manifest 资格检查、最优一对一匹配、F1、false alarms/hour 和 P95 delay；
+19. development 调参、参数冻结与 held-out 一次最终评价协议。
 
 下一阶段按顺序完成第一阶段剩余数据工作：
 
 1. 运行 `./scripts/capture_five_live_samples.sh 10`，采集至少 5 段相互独立的合法测试音频；
 2. 人工填写每段 `references.csv`，保持 development 与 held-out 分离；
 3. 在真实/公开标注数据上重复准确率、整文件 benchmark 与逐 hop benchmark；
-4. 按 `docs/transient_anomaly_v1.md` 采集至少 60 秒的 steady session，前 30 秒人工确认正常，后半段
+4. 按 `docs/anomaly_replay_and_evaluation.md` 采集至少 60 秒的 steady session，前 30 秒人工确认正常，后半段
    注入预先定义的 `anomaly_impact` / `anomaly_burst`；
 5. 用人工标签在 development 数据上锁定阈值，再在 held-out 数据上报告 event F1、false alarms/hour
    和 P95 detection delay；

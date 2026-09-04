@@ -123,6 +123,7 @@ ctest --preset macos-arm64-release
 - `anomaly-frames.csv`：每个分析帧的原始特征、校准进度、监测 z-score、onset 评分和异常耗时；
 - `anomaly-events.csv`：实际发出的 `unexpected_transient`，包含全局时间、score、主导特征和 z-score；
 - `anomaly-summary.json`：实际参数、基线是否完成、冻结统计、事件计数、capture integrity 和限制声明。
+- `capture-analysis-f32.wav`：保存 live 分析用的 mono float32 样本，供相同参数确定性回放。
 
 若 `baseline_complete=false`，本次 session 只能用于排错，不能用于异常准确率结论。若
 `capture_integrity_pass=false`，同样不能进入正式实验。
@@ -148,11 +149,18 @@ start_seconds,end_seconds,class,operating_state,confidence,annotator
 并在 held-out sessions 上报告 event Precision、Recall、F1、false alarms/hour 和 P95 detection delay。
 当前代码与无标注录音只能证明计算流程成立，不能证明业务准确率。
 
+现在可使用 `hero-audio-anomaly-replay` 生成可重复事件，再用 `hero-audio-anomaly-eval` 读取 manifest、
+人工区间标签与原始 live 完整性证据。完整命令、匹配公式、delay scope、development 调参和 held-out
+冻结协议见 `docs/anomaly_replay_and_evaluation.md`。
+
 ## 9. 源码位置
 
 - `include/hero_audio/acoustic_features.hpp`、`src/dsp/acoustic_features.cpp`：旁路特征；
 - `include/hero_audio/anomaly_detector.hpp`、`src/dsp/anomaly_detector.cpp`：gate、基线和评分；
 - `include/hero_audio/anomaly_output.hpp`、`src/dsp/anomaly_output.cpp`：可单测的 CSV 序列化；
 - `tests/test_anomaly_detector.cpp`：同步、冻结、防污染、refractory 和断裂测试；
+- `include/hero_audio/anomaly_replay.hpp`、`src/dsp/anomaly_replay.cpp`：逐 256 samples 的确定性回放；
+- `include/hero_audio/anomaly_evaluation.hpp`、`src/evaluation/anomaly_evaluation.cpp`：人工标签解析、最优
+  一对一匹配和 pooled 指标；
 - `configs/transient_anomaly_v1.json`：预注册的 v1 语义和默认参数；
 - `src/live_main.cpp`：实时输出接线，不改变原核心计时边界。

@@ -4,12 +4,14 @@
 
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -93,7 +95,8 @@ bool test_queue_concurrent_transfer() {
 
 class LocalPath {
 public:
-  LocalPath() : path_(std::filesystem::current_path() / "hero_audio_live_writer_test.wav") {}
+  explicit LocalPath(std::string_view name = "hero_audio_live_writer_test.wav")
+      : path_(std::filesystem::current_path() / name) {}
   ~LocalPath() {
     std::error_code ignored;
     std::filesystem::remove(path_, ignored);
@@ -154,6 +157,35 @@ bool test_wav_writer_rejects_non_finite_without_advancing() {
   return writer.sample_count() == 0;
 }
 
+bool test_float32_wav_writer_bit_exact_round_trip() {
+  LocalPath path("hero_audio_float32_writer_test.wav");
+  const std::array<float, 7> signal{
+      -1.25F, -0.12345679F, 0.0F, 0.125F, 0.9876543F, 1.5F, 42.0F};
+  {
+    hero_audio::Float32WavWriter writer(path.get(), 48000);
+    writer.append(signal);
+    writer.append_silence(2);
+    writer.finalize();
+    if (writer.sample_count() != 9 || !writer.finalized()) {
+      return false;
+    }
+  }
+  const auto audio = hero_audio::read_wav(path.get());
+  if (audio.sample_rate_hz != 48000 || audio.source_channels != 1 ||
+      audio.source_encoding != hero_audio::WavSampleEncoding::IeeeFloat ||
+      audio.source_bits_per_sample != 32 ||
+      audio.mono_samples.size() != 9) {
+    return false;
+  }
+  for (std::size_t index = 0; index < signal.size(); ++index) {
+    if (std::bit_cast<std::uint32_t>(audio.mono_samples[index]) !=
+        std::bit_cast<std::uint32_t>(signal[index])) {
+      return false;
+    }
+  }
+  return audio.mono_samples[7] == 0.0F && audio.mono_samples[8] == 0.0F;
+}
+
 } // namespace
 
 int main() {
@@ -163,6 +195,8 @@ int main() {
       {"streaming WAV writer round trip", test_streaming_wav_writer_round_trip},
       {"WAV writer non-finite rejection",
        test_wav_writer_rejects_non_finite_without_advancing},
+      {"float32 WAV bit-exact round trip",
+       test_float32_wav_writer_bit_exact_round_trip},
   };
   for (const auto &[name, test] : tests) {
     if (!test()) {

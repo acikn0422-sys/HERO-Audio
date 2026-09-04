@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "audio": {
     "sample_rate_hz": 48000,
     "channels": 1,
@@ -19,7 +19,18 @@
   },
   "evaluation": {
     "matching_tolerance_ms": 50,
-    "matching_objective": "max_cardinality_then_min_total_absolute_error"
+    "matching_objective": "max_cardinality_then_min_total_absolute_error",
+    "anomaly_reference_shape": "labelled_time_interval",
+    "anomaly_event_metrics": [
+      "precision",
+      "recall",
+      "f1",
+      "false_alarms_per_hour",
+      "p50_detection_delay_ms",
+      "p95_detection_delay_ms"
+    ],
+    "split_policy": "development_then_parameter_freeze_then_held_out_once",
+    "mixed_detection_delay_scopes_allowed": false
   },
   "benchmark": {
     "warmup_runs": 3,
@@ -50,14 +61,19 @@
       "queue_type": "bounded_lock_free_spsc",
       "queue_capacity_hops": 64,
       "queue_overflow_policy": "drop_hop_count_gap_reset_processor",
-      "recording_format": "mono_pcm16_wav",
+      "listening_recording_format": "mono_pcm16_wav",
+      "analysis_recording_format": "mono_ieee_float32_wav_bit_exact",
       "capture_integrity_requirement": "zero_dropped_hops_and_zero_render_errors",
       "device_and_driver_latency_included": false,
       "transient_anomaly_layer": {
         "config": "configs/transient_anomaly_v1.json",
         "default_operating_state": "steady",
         "baseline_seconds": 30.0,
-        "core_hop_compute_metric_unchanged": true
+        "core_hop_compute_metric_unchanged": true,
+        "deterministic_replay_input": "capture-analysis-f32.wav",
+        "replay_tail_policy": "ignore_incomplete_hop_without_padding",
+        "evaluation_manifest": "configs/anomaly_dataset_manifest.csv",
+        "eligibility_summary_must_come_from": "live_coreaudio_stats"
       }
     }
   }

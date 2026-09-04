@@ -82,7 +82,7 @@ void write_anomaly_frame_csv_row(
 void write_anomaly_event_csv_header(std::ostream &output) {
   output << "sequence,segment_index,class,operating_state,frame_index,"
             "onset_time_seconds,emitted_at_audio_seconds,"
-            "estimated_software_detection_delay_ms,anomaly_score,primary_reason,"
+            "delay_scope,estimated_software_detection_delay_ms,anomaly_score,primary_reason,"
             "spectral_flux,frame_rms,peak_absolute,zero_crossing_rate,"
             "flux_positive_z,rms_positive_z,peak_positive_z,"
             "zero_crossing_positive_z\n";
@@ -92,6 +92,7 @@ void write_anomaly_event_csv_row(
     std::ostream &output, std::uint64_t sequence, std::size_t segment_index,
     double segment_offset_seconds, OperatingState operating_state,
     const TransientEventScore &event,
+    std::string_view delay_scope,
     double estimated_software_detection_delay_ms) {
   const auto old_flags = output.flags();
   const auto old_precision = output.precision();
@@ -100,7 +101,8 @@ void write_anomaly_event_csv_row(
          << event.frame_index << ','
          << segment_offset_seconds + event.onset_time_seconds << ','
          << segment_offset_seconds + event.emitted_at_seconds << ','
-         << estimated_software_detection_delay_ms << ',' << event.score << ','
+         << delay_scope << ',' << estimated_software_detection_delay_ms << ','
+         << event.score << ','
          << to_string(event.primary_reason) << ',' << event.features.spectral_flux << ','
          << event.features.frame_rms << ',' << event.features.peak_absolute << ','
          << event.features.zero_crossing_rate << ','

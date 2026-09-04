@@ -359,7 +359,7 @@ void write_anomaly_summary(
     const hero_audio::TransientAnomalyDetector &detector,
     const hero_audio::CoreAudioCaptureStats &capture,
     std::span<const double> anomaly_analysis_times,
-    std::size_t calibration_reset_count) {
+    std::size_t calibration_reset_count, std::uint32_t sample_rate_hz) {
   std::ofstream output(path, std::ios::trunc);
   if (!output) {
     throw std::runtime_error("Unable to open anomaly summary JSON: " + path.string());
@@ -375,6 +375,12 @@ void write_anomaly_summary(
          << "  \"status\": \"research_prototype_requires_labelled_validation\",\n"
          << "  \"scope\": \"unexpected_transient_events_during_declared_steady_operation\",\n"
          << "  \"not_a_claim_of\": \"universal_anomaly_or_fault_type_diagnosis\",\n"
+         << "  \"analysis_audio_path\": \""
+         << json_escape((arguments.output_directory /
+                         "capture-analysis-f32.wav").string())
+         << "\",\n"
+         << "  \"analysis_audio_format\": \"mono_ieee_float32_bit_exact\",\n"
+         << "  \"sample_rate_hz\": " << sample_rate_hz << ",\n"
          << "  \"operating_state\": \""
          << hero_audio::to_string(arguments.operating_state) << "\",\n"
          << "  \"baseline_human_assumption\": \"first uninterrupted steady interval is verified normal\",\n"
@@ -404,6 +410,7 @@ void write_anomaly_summary(
   output << ",\n  \"core_hop_compute_metric_includes_anomaly_layer\": false,\n"
          << "  \"capture_integrity_pass\": "
          << (capture_integrity ? "true" : "false") << ",\n"
+         << "  \"capture_integrity_source\": \"live_coreaudio_stats\",\n"
          << "  \"labelled_validation_required_before_accuracy_claims\": true,\n"
          << "  \"baseline_statistics\": ";
   if (!detector.baseline().has_value()) {
@@ -467,6 +474,8 @@ int main(int argc, char **argv) {
         });
 
     const auto wav_path = arguments.output_directory / "capture.wav";
+    const auto analysis_wav_path =
+        arguments.output_directory / "capture-analysis-f32.wav";
     const auto event_path = arguments.output_directory / "onsets.csv";
     const auto measurement_path = arguments.output_directory / "hop-measurements.csv";
     const auto summary_path = arguments.output_directory / "summary.json";
@@ -478,10 +487,11 @@ int main(int argc, char **argv) {
         arguments.output_directory / "anomaly-summary.json";
     prepare_output_directory(
         arguments.output_directory,
-        {wav_path, event_path, measurement_path, summary_path, anomaly_frame_path,
-         anomaly_event_path, anomaly_summary_path});
+        {wav_path, analysis_wav_path, event_path, measurement_path, summary_path,
+         anomaly_frame_path, anomaly_event_path, anomaly_summary_path});
 
     hero_audio::Pcm16WavWriter wav(wav_path, sample_rate_hz);
+    hero_audio::Float32WavWriter analysis_wav(analysis_wav_path, sample_rate_hz);
     std::ofstream events(event_path, std::ios::trunc);
     std::ofstream measurements(measurement_path, std::ios::trunc);
     std::ofstream anomaly_frames(anomaly_frame_path, std::ios::trunc);
@@ -522,10 +532,13 @@ int main(int argc, char **argv) {
         throw std::runtime_error("CoreAudio hop timeline moved backwards");
       }
       if (block.first_sample_index > wav.sample_count()) {
-        wav.append_silence(
-            static_cast<std::size_t>(block.first_sample_index - wav.sample_count()));
+        const auto missing_samples =
+            static_cast<std::size_t>(block.first_sample_index - wav.sample_count());
+        wav.append_silence(missing_samples);
+        analysis_wav.append_silence(missing_samples);
       }
       wav.append(block.samples);
+      analysis_wav.append(block.samples);
 
       if (discontinuity) {
         processor.reset();
@@ -587,6 +600,7 @@ int main(int argc, char **argv) {
           hero_audio::write_anomaly_event_csv_row(
               anomaly_events, block.sequence, segment_index,
               segment_offset_seconds, arguments.operating_state, anomaly,
+              "software_after_callback_estimate",
               anomaly_delay_ms);
         }
         if (anomaly_detector.baseline().has_value() &&
@@ -682,10 +696,13 @@ int main(int argc, char **argv) {
         capture.input_timeline_frame_count / hero_audio::kLiveHopSize *
         hero_audio::kLiveHopSize;
     if (complete_timeline_samples > wav.sample_count()) {
-      wav.append_silence(
-          static_cast<std::size_t>(complete_timeline_samples - wav.sample_count()));
+      const auto missing_samples =
+          static_cast<std::size_t>(complete_timeline_samples - wav.sample_count());
+      wav.append_silence(missing_samples);
+      analysis_wav.append_silence(missing_samples);
     }
     wav.finalize();
+    analysis_wav.finalize();
     events.flush();
     measurements.flush();
     anomaly_frames.flush();
@@ -710,7 +727,7 @@ int main(int argc, char **argv) {
                   wav.sample_count());
     write_anomaly_summary(anomaly_summary_path, arguments, anomaly_detector,
                           capture, anomaly_analysis_times,
-                          anomaly_calibration_reset_count);
+                          anomaly_calibration_reset_count, sample_rate_hz);
 
     const double p95_compute = hero_audio::linear_percentile(steady_compute_times, 0.95);
     std::cout << "capture_complete: true\n"

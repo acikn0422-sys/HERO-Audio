@@ -1,7 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "model_name": "steady_state_transient_anomaly_v1",
   "status": "research_prototype_requires_labelled_validation",
+  "parameter_status": "pre_registered_defaults_pending_development_validation",
   "scope": {
     "included": "unexpected transient acoustic events during declared steady operation",
     "excluded": [
@@ -44,12 +45,20 @@
   },
   "evaluation_required_before_claims": {
     "development_and_held_out_sessions_separate": true,
+    "workflow": "development_evaluation_then_parameter_freeze_then_single_held_out_evaluation",
+    "matching_tolerance_ms": 50.0,
+    "matching_objective": "max_cardinality_then_min_total_interval_error",
+    "each_prediction_and_reference_used_at_most_once": true,
+    "eligibility_requires_live_capture_integrity": true,
+    "mixed_detection_delay_scopes_allowed": false,
+    "normal_transition_false_positives_reported_separately": true,
     "metrics": [
       "event_precision",
       "event_recall",
       "event_f1",
       "false_alarms_per_hour",
       "p95_detection_delay_ms"
-    ]
+    ],
+    "parameter_change_policy": "change_only_on_development_and_increment_model_or_config_version_before_held_out"
   }
 }
