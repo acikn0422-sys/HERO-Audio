@@ -2,7 +2,8 @@
 
 本指南把操作分为 Terminal、C++、构建配置、GitHub 四部分。当前版本已完成 Apple Silicon
 开发环境、FFTW3f CPU 基线、WAV/mono、Spectral Flux、causal onset 检测、最优一对一 onset
-评价、整文件计时和首张诊断图。下一步是扩展到至少 5 段独立音频和正式标注数据。
+评价、整文件计时、首张诊断图，以及逐 256 samples 的流式处理与 hop 延迟统计。下一步是扩展到
+至少 5 段独立音频和正式标注数据，再接入真实 CoreAudio 输入。
 
 ## 0. 当前数据流和目录
 
@@ -23,6 +24,12 @@ causal threshold + peak confirmation ──> onset CSV
 人工标注 CSV ─────────────────────────────────┤
                                              v
                              最优一对一匹配 ──> P/R/F1
+
+同一 mono float32 数据也可以按 256 samples 重放：
+
+WAV → 逐 hop 输入 → StreamingProcessor → flux/onset
+                            ├── P50/P95/P99 hop compute
+                            └── 与离线结果逐帧核对
 ```
 
 主要目录：
@@ -302,15 +309,46 @@ for (const auto kind : hero_audio::available_fft_backends()) {
 }
 ```
 
-除此之外，CTest 还覆盖 WAV reader、Spectral Flux、causal onset、最优匹配与评价 CLI。运行：
+除此之外，CTest 还覆盖 WAV reader、Spectral Flux、causal onset、流式/离线一致性、最优匹配与
+评价 CLI。运行：
 
 ```bash
 ctest --preset macos-arm64-dev --output-on-failure
 ```
 
-当前应有 6 个 CTest 测试全部通过。
+当前应有 8 个 CTest 测试全部通过。
 
-### 2.7 最优一对一 onset 评价
+### 2.7 StreamingProcessor 与逐 hop 计时
+
+公共状态机位于 `include/hero_audio/streaming_processor.hpp`，实现位于
+`src/dsp/streaming_processor.cpp`。构造时预分配 1024-sample 环形缓冲、Hann、FFT 输入输出与相邻
+帧 magnitude。每次 `push_hop()` 只接受 256 个有限的 mono float32 采样；错误输入在改变状态前
+抛出异常。
+
+前 5 个 hop 的状态变化如下：
+
+```text
+hop 0：收到 256，未产生 frame
+hop 1：收到 512，未产生 frame
+hop 2：收到 768，未产生 frame
+hop 3：收到 1024，产生 frame 0
+hop 4：收到 1280，产生以 sample 256 开始的 frame 1
+```
+
+`include/hero_audio/streaming_benchmark.hpp` 与 `src/benchmark/streaming_benchmark.cpp` 围绕每个产生
+分析帧的 `push_hop()` 调用计时。命令行入口是 `src/streaming_main.cpp`：
+
+```bash
+./build/macos-arm64-release/hero-audio-stream \
+  input.wav raw-hops.csv summary.json \
+  --warmup-passes 1 --passes 5 --backend fftw
+```
+
+raw CSV 保留每个 hop 的 compute、5.333 ms deadline、是否超时和是否发出 onset；JSON 汇总 P50、
+P95、P99、maximum 和 deadline miss。计时结束后再运行原有离线流程，自动核对逐帧 flux 与 onset；
+因此一致性检查不会污染 hop 计时。
+
+### 2.8 最优一对一 onset 评价
 
 公共接口位于 `include/hero_audio/onset_evaluation.hpp`，实现位于
 `src/evaluation/onset_evaluation.cpp`。输入会稳定排序，但输出仍保存原始输入索引。动态规划状态
@@ -362,8 +400,8 @@ brew "fftw"
 3. 查找 FFTW3f；
 4. 找到时加入 `fftw_backend.cpp`、链接 `FFTW3f::fftw3f` 并定义
    `HERO_AUDIO_HAS_FFTW3F=1`；
-5. 创建 `hero-audio`、`hero-audio-eval` 和 `hero-audio-bench` 可执行文件；
-6. 创建并注册 FFT、WAV、Spectral Flux、causal onset、评价、benchmark 单元测试与 CLI 测试。
+5. 创建 `hero-audio`、`hero-audio-eval`、`hero-audio-bench` 和 `hero-audio-stream` 可执行文件；
+6. 创建并注册 FFT、WAV、Spectral Flux、causal onset、流式处理、评价、benchmark 与 CLI 测试。
 
 项目把正式库名锁定为单精度 `fftw3f`，不能误链接 double 精度的 `fftw3`。
 
@@ -375,7 +413,8 @@ brew "fftw"
 
 ### 3.4 baseline.json
 
-`configs/baseline.json` 固定采样率、frame、hop、阈值模式、匹配规则、warm-up 次数和重复次数。
+`configs/baseline.json` 固定采样率、frame、hop、阈值模式、匹配规则、warm-up 次数、重复次数与流式
+hop 计时边界。
 修改实验语义时必须提升 `schema_version`，不要覆盖旧结果对应的配置。
 
 ## 4. GitHub：首次创建和上传
@@ -464,11 +503,15 @@ git push
 6. 最优一对一 onset matching、Precision、Recall 与 F1；
 7. 整文件 median、P95、P99 与 RTF；
 8. “时间—Spectral Flux—threshold—onset”可复现图。
+9. 逐 256 samples 的 `StreamingProcessor`；
+10. P50/P95/P99 hop compute、5.333 ms deadline 检查与离线一致性证明。
 
 下一阶段按顺序完成第一阶段剩余数据工作：
 
 1. 准备至少 5 段相互独立的合法测试音频；
 2. 分离调参与最终测试集合；
-3. 在真实/公开标注数据上重复准确率与整文件 benchmark。
+3. 在真实/公开标注数据上重复准确率、整文件 benchmark 与逐 hop benchmark；
+4. 之后增加 CoreAudio 输入适配器，单独测量设备/驱动/系统缓冲延迟；若研究“异常”，需再定义
+   异常标签与判断规则，不能把 onset 自动等同于异常。
 
 上述闭环完成以前，不开始 CUDA、AI、FPGA 或运营优化模型。

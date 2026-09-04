@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "audio": {
     "sample_rate_hz": 48000,
     "channels": 1,
@@ -28,6 +28,18 @@
     "whole_file_metric": "wav_read_to_onset_csv_serialized",
     "whole_file_output_sink": "in_memory",
     "percentile_method": "linear_type_7",
-    "report_percentiles": [50, 95, 99]
+    "report_percentiles": [50, 95, 99],
+    "streaming": {
+      "input_hop_samples": 256,
+      "warmup_passes": 1,
+      "measured_passes": 5,
+      "metric": "steady_state_hop_compute",
+      "timed_scope": "hop_insert_hann_fft_flux_causal_detection",
+      "excluded_scope": "wav_decode_backend_initialization_audio_device_driver",
+      "startup_fill_hops_excluded": true,
+      "partial_tail_policy": "ignore_without_padding",
+      "deadline_ms_at_48000_hz": 5.333333333,
+      "requirement": "p95_strictly_less_than_hop_period"
+    }
   }
 }

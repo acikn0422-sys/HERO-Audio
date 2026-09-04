@@ -14,6 +14,33 @@
 `P95(hop compute) < 5.333 ms`。流式检测使用只依赖当前及历史帧的 causal threshold，初始目标为
 `P95(detection delay) < 30 ms`。音频设备、操作系统和驱动延迟单独报告，不计入算法延迟。
 
+流式 hop benchmark 先在计时区间外把 WAV 解码成 mono float32，再严格按 256 samples 调用一次
+`StreamingProcessor::push_hop()`。单个稳态计时边界是：
+
+```text
+steady_clock start
+→ 256 个新采样写入环形缓冲区
+→ 重建最近 1024 samples 并应用 Hann
+→ R2C FFT → magnitude → positive Spectral Flux
+→ causal threshold / peak confirmation
+→ 可选 onset event 返回
+→ steady_clock stop
+```
+
+第一个完整 FFT 窗口需要 4 个 hop。最初 3 次只填充缓冲区、不产生分析帧，因此不进入稳态分位数；
+第 4 次调用生成 frame 0，并进入统计。WAV 解码、backend/plan 初始化、raw CSV/summary JSON 写入、
+音频设备、CoreAudio、操作系统缓冲和驱动均不属于 hop compute。文件末尾不足 256 samples 的尾部不
+补零，数量必须写入 `ignored_tail_sample_count`。
+
+每次正式流式 benchmark 至少运行 1 次 warm-up pass 和 5 次 measured passes，保留每个稳态 hop 的
+原始时间。汇总仍使用 Type-7 的 P50、P95、P99，并同时报告 maximum、deadline miss 数与
+`P95 < hop_period` 的布尔结果。测试/CI 不硬编码性能通过，因为共享 runner 不能代表正式 Apple
+Silicon 实验机。
+
+完成计时后，程序在计时区间外调用原有离线 Spectral Flux 和 causal detector。流式与离线必须拥有
+相同 frame/onset 数、相同时间语义，flux 在固定绝对/相对浮点容差内相等，onset 事件也必须相等。
+这项检查证明新增状态机没有改变算法；它不是检测准确率评价，后者仍需人工标注与一对一匹配。
+
 整段文件同时报告 median、P95、P99 和 real-time factor。正式实现把 FFT backend/plan 创建放在
 计时区间外并单独报告 `backend_initialization_ms`。每个 steady-state run 的边界是：
 
