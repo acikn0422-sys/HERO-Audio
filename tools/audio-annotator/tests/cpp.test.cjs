@@ -1,0 +1,26 @@
+"use strict";
+// This is an integration fixture, NOT research evidence from an actual recording.
+const fs = require("node:fs");
+const path = require("node:path");
+const assert = require("node:assert/strict");
+const {spawnSync} = require("node:child_process");
+const C = require("../core.js");
+const {makeWav, arrayBuffer, metadata} = require("./fixtures.cjs");
+const root = path.resolve(__dirname, "../../..");
+const executable = process.env.HERO_ANOMALY_EVAL || path.join(root, "build/macos-arm64-release/hero-audio-anomaly-eval");
+if (!fs.existsSync(executable)) throw new Error("Build the C++ evaluator or set HERO_ANOMALY_EVAL.");
+const base = path.join(root, "build/annotator-cpp"); fs.mkdirSync(base, {recursive: true});
+const output = fs.mkdtempSync(path.join(base, "fixture-"));
+const wav = makeWav(), audio = metadata(wav, C.parseWav(arrayBuffer(wav)));
+const label = {id: 1, startSample: 88200, endSample: 92610, className: "anomaly_impact", operatingState: "steady", confidence: "high", annotator: "synthetic-test"};
+fs.writeFileSync(path.join(output, "labels.csv"), C.exportCsv([label], audio, {baselineSeconds: 1, normalBaselineConfirmed: true, split: "development"}));
+fs.writeFileSync(path.join(output, "audio.wav"), makeWav({code: 3, bits: 32}));
+fs.writeFileSync(path.join(output, "frames.csv"), "frame_center_seconds,phase\n1.01,monitoring\n");
+fs.writeFileSync(path.join(output, "events.csv"), "class,onset_time_seconds,emitted_at_audio_seconds,delay_scope,estimated_software_detection_delay_ms,anomaly_score\nunexpected_transient,2,2.02,algorithm_only_replay,20,2\n");
+fs.writeFileSync(path.join(output, "eligibility.json"), JSON.stringify({baseline_complete: true, capture_integrity_pass: true, capture_integrity_source: "live_coreaudio_stats"}));
+fs.writeFileSync(path.join(output, "manifest.csv"), "session_id,split,audio_path,labels_path,frames_path,events_path,eligibility_summary_path\nsynthetic-integration,development,audio.wav,labels.csv,frames.csv,events.csv,eligibility.json\n");
+const result = spawnSync(executable, [path.join(output, "manifest.csv"), path.join(output, "metrics"), "--split", "development"], {encoding: "utf8"});
+assert.equal(result.status, 0, result.stdout + result.stderr);
+assert.match(result.stdout, /true_positives: 1/); assert.match(result.stdout, /false_positives: 0/);
+assert.match(result.stdout, /false_negatives: 0/); assert.match(result.stdout, /f1: 1\.000000/);
+console.log("PASS exported CSV accepted by the unchanged C++ evaluation CLI (synthetic integration fixture only)");

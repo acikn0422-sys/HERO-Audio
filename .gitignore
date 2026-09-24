@@ -4,6 +4,12 @@ build-*/
 .cache/
 .venv/
 __pycache__/
+node_modules/
+playwright-report/
+test-results/
+# Browser-exported manual annotations are private research data.
+hero-labels-*.draft.json
+hero-labels-*.human-labels.csv
 compile_commands.json
 work/
 /outputs/

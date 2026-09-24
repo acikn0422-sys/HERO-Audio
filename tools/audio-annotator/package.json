@@ -1,0 +1,12 @@
+{
+  "name": "hero-audio-local-annotator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline manual annotation tool; npm is needed only for development tests",
+  "scripts": {
+    "test": "node --test tests/core.test.cjs",
+    "test:browser": "node tests/browser.test.cjs",
+    "test:cpp": "node tests/cpp.test.cjs"
+  },
+  "devDependencies": {"playwright": "1.62.1"}
+}

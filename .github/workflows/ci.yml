@@ -13,3 +13,32 @@ jobs:
       - run: cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Release -DHERO_AUDIO_REQUIRE_FFTW=ON
       - run: cmake --build build/ci
       - run: ctest --test-dir build/ci --output-on-failure
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tools/audio-annotator/tests/core.test.cjs
+      - run: node tools/audio-annotator/tests/cpp.test.cjs
+        env:
+          HERO_ANOMALY_EVAL: ${{ github.workspace }}/build/ci/hero-audio-anomaly-eval
+
+  annotation-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+        working-directory: tools/audio-annotator
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: tools/audio-annotator
+      - run: pnpm run test:browser
+        working-directory: tools/audio-annotator
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: annotation-browser-synthetic-test
+          path: build/annotator-browser/
+          retention-days: 7

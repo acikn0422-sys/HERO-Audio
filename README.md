@@ -17,6 +17,7 @@ macOS／Apple Silicon；第一阶段仅实现和验证 C++ CPU 检测闭环。
 - macOS CoreAudio 实时输入、固定容量无锁 SPSC 队列、PCM16 回听录音和 bit-exact float32 分析录音；
 - 稳态瞬态异常研究层：30 秒 verified-normal 鲁棒基线、冻结后评分与独立审计输出；
 - float32 确定性回放、人工区间标签、最优一对一异常匹配和 development/held-out 评价；
+- 离线浏览器标注工具：原始波形缩放/回听、人工选区、指纹绑定草稿和兼容 C++ 的 CSV 导出；
 - 逐帧 diagnostics 支持绘制 Spectral Flux、causal threshold 与 onset。
 
 完整指标定义见 [docs/benchmark_protocol.md](docs/benchmark_protocol.md)。
@@ -32,6 +33,8 @@ CoreAudio 回调、队列过载策略、实时输出和五段录音流程见
 [docs/transient_anomaly_v1.md](docs/transient_anomaly_v1.md)。
 实时录音、确定性回放、manifest、参数冻结与 held-out 最终评价见
 [docs/anomaly_replay_and_evaluation.md](docs/anomaly_replay_and_evaluation.md)。
+不用手填时间的本地音频标注器及其技术与研究限制见
+[docs/manual_audio_annotation.md](docs/manual_audio_annotation.md)。
 
 GitHub Actions 只验证跨机器构建和数值正确性，不生成或发布性能结论。正式 Apple Silicon benchmark
 必须在本地 M 系列机器上运行，并保存 `scripts/capture_system_info.sh` 的输出。
@@ -191,6 +194,15 @@ anomaly-summary.json
 默认录制 60 秒、前 30 秒作为 verified-normal。看到终端显示
 `anomaly_baseline_complete: monitoring has started` 后才制造预先定义的测试事件。脚本创建的
 `human-labels.csv` 必须通过回听独立填写，不能复制程序预测。
+
+可使用不载入预测的本地标注页面：
+
+```bash
+bash scripts/open_audio_annotator.sh
+```
+
+选择 `capture.wav`，拖动选区、回听、确认标签，并定期下载草稿。最终下载 CSV 后，核对录音指纹，
+备份已有标签，再将导出文件放入对应 session 作为 `human-labels.csv`。页面不会自动覆盖或上传数据。
 
 录音同时保存 `capture-analysis-f32.wav`，它逐样本保留 live 消费线程收到的 mono float32 数据，供
 确定性回放使用。回听仍使用 `capture.wav`。完成独立标注后：
