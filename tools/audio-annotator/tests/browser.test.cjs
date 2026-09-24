@@ -82,7 +82,8 @@ const {makeWav} = require("./fixtures.cjs");
     // Pointer selection uses the same original sample clock as numeric input.
     await page.locator("#new-label").click(); await page.locator("#fit-all").click();
     const rect = await page.locator("#detail").boundingBox();
-    const px = seconds => rect.x + 62 + seconds / 4 * (rect.width - 80);
+    const box = await page.locator("#detail").evaluate(canvas => ({border: canvas.clientLeft, width: canvas.clientWidth}));
+    const px = seconds => rect.x + box.border + 62 + seconds / 4 * (box.width - 80);
     await page.mouse.move(px(2.4), rect.y + 100); await page.mouse.down();
     await page.mouse.move(px(2.6), rect.y + 100, {steps: 8}); await page.mouse.up();
     assert.ok(Math.abs(Number(await page.locator("#start-time").inputValue()) - 2.4) < 0.003);

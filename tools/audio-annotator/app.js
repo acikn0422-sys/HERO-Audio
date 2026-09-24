@@ -133,9 +133,10 @@
     drawCanvas("detail", view, false);
   }
   function pointerSample(event, id, range) {
-    const rect = $(id).getBoundingClientRect();
-    return C.positionToSample(event.clientX - rect.left - geometry.left,
-      rect.width - geometry.left - geometry.right, range);
+    const canvas = $(id), rect = canvas.getBoundingClientRect();
+    // Match the canvas content box used by drawCanvas, excluding its CSS border.
+    return C.positionToSample(event.clientX - rect.left - canvas.clientLeft - geometry.left,
+      canvas.clientWidth - geometry.left - geometry.right, range);
   }
   $("overview").addEventListener("pointerdown", event => {
     if (!audio || busy) return;
