@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>HERO-Audio · 独立音频标注</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="core.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">HERO-AUDIO / RESEARCH TOOLS</p><h1>听清楚，再标记。</h1>
+        <p class="lead">独立音频标注 · 仅本地处理 · 不载入检测预测</p></div>
+      <span class="badge">OFFLINE / v1</span>
+    </header>
+    <section class="card" aria-labelledby="load-title">
+      <h2 id="load-title">01 · 选择回听录音</h2>
+      <label class="file-label">单声道 PCM16 WAV（不是 float32 分析录音）
+        <input id="audio-file" type="file" accept=".wav,audio/wav"></label>
+      <p id="audio-info">选择后显示采样率、真实时长与指纹；原文件不会被修改。</p>
+      <p id="status" role="status" aria-live="polite">尚未载入录音。</p>
+      <p id="error" role="alert" hidden></p>
+    </section>
+    <fieldset id="workspace" disabled>
+      <legend class="sr-only">录音标注操作</legend>
+      <section class="card" aria-labelledby="wave-title">
+        <div class="section-heading"><h2 id="wave-title">02 · 定位与回听</h2><span id="view-info" class="mono"></span></div>
+        <p class="hint">上图点击定位；下图拖动选区。浅灰区域是计划基线，不是算法判断。</p>
+        <canvas id="overview" aria-label="全程原始波形，点击定位局部视图">全程波形；也可使用下方定位秒数和按钮。</canvas>
+        <div class="toolbar">
+          <label>定位到（秒）<input id="jump-time" type="number" min="0" step="0.1" value="30"></label>
+          <button id="jump" type="button">定位</button>
+          <button id="pan-left" type="button" aria-label="向前移动半个视窗">← 前移</button>
+          <button id="pan-right" type="button" aria-label="向后移动半个视窗">后移 →</button>
+          <button id="zoom-in" type="button">放大 ＋</button>
+          <button id="zoom-out" type="button">缩小 −</button>
+          <button id="fit-selection" type="button">放大选区</button>
+          <button id="fit-all" type="button">看全程</button>
+          <label>纵向显示<select id="gain"><option value="1">×1</option><option value="4">×4</option><option value="16">×16</option><option value="64">×64</option></select></label>
+        </div>
+        <canvas id="detail" aria-label="局部原始波形，拖动选择声音起止区间">局部波形；也可直接输入下方起止秒数。</canvas>
+        <p class="hint">横轴：原录音秒数；纵轴：归一化幅度。纵向放大可能截顶，仅改变显示，不改变录音或播放音量。</p>
+        <div class="toolbar">
+          <button id="play-view" type="button">▶ 播放视窗</button>
+          <button id="play-selection" type="button" class="primary">▶ 回听选区</button>
+          <button id="stop" type="button">■ 停止</button>
+          <label class="check"><input id="loop" type="checkbox">循环回听</label>
+          <label>选区前后（秒）<input id="padding" type="number" min="0" max="2" step="0.05" value="0.15"></label>
+          <label>速度<select id="rate"><option value="1">1× 原速</option><option value="0.75">0.75×</option><option value="0.5">0.5×</option></select></label>
+          <label>音量<input id="volume" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+          <span id="play-state" role="status">已停止</span>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="label-title">
+        <div class="section-heading"><h2 id="label-title">03 · 确认一条标签</h2><span id="editing">新标签</span></div>
+        <div class="form-grid">
+          <label>开始（秒）<input id="start-time" type="number" min="0" step="0.001"></label>
+          <label>结束（秒）<input id="end-time" type="number" min="0" step="0.001"></label>
+          <label>类别<select id="class-name"><option value="anomaly_impact">单次敲击 / impact</option><option value="anomaly_burst">连续突发 / burst</option><option value="normal_background">正常背景</option><option value="normal_transition">正常切换</option></select></label>
+          <label>边界置信度<select id="confidence"><option value="medium">中 · 需复核</option><option value="high">高 · 清晰</option><option value="low">低 · 模糊</option></select></label>
+          <label>标注人<input id="annotator" type="text" maxlength="40" placeholder="填写姓名或缩写" autocomplete="off"></label>
+        </div>
+        <p id="selection-info" class="mono">尚未选择区间。</p>
+        <div class="toolbar">
+          <button id="save-label" type="button" class="primary">添加标签</button>
+          <button id="new-label" type="button">取消编辑 / 新标签</button>
+          <button id="undo" type="button">撤销</button><button id="redo" type="button">重做</button>
+        </div>
+        <p class="hint">起点取第一次可辨识的声音变化，不是最高峰。终点按预先约定的衰减边界；不要为匹配预测而拉长区间。</p>
+      </section>
+      <section class="card" aria-labelledby="export-title">
+        <div class="section-heading"><h2 id="export-title">04 · 复核与保存</h2><span id="label-count">0 条标签</span></div>
+        <div class="toolbar">
+          <label>计划基线（秒）<input id="baseline" type="number" min="0" step="0.001" value="30"></label>
+          <label>数据划分<select id="split"><option value="development">development</option><option value="held-out">held-out</option></select></label>
+          <label class="check"><input id="baseline-confirmed" type="checkbox">我已回听，确认基线仅有正常背景声</label>
+        </div>
+        <div class="table-wrap"><table><caption class="sr-only">人工标签列表</caption><thead><tr><th>序号</th><th>开始 / 结束（秒）</th><th>类别</th><th>置信度 / 标注人</th><th>操作</th></tr></thead><tbody id="labels-body"></tbody></table></div>
+        <p id="empty-labels">还没有标签。正常负样本可以导出空标签表；不要为了凑数量添加事件。</p>
+        <div class="toolbar export-bar">
+          <button id="save-draft" type="button">下载草稿 JSON</button>
+          <label class="file-label compact">恢复草稿<input id="draft-file" type="file" accept=".json,application/json"></label>
+          <button id="export-csv" type="button" class="primary">下载标签 CSV</button>
+          <span id="save-state" role="status">尚未保存草稿。</span>
+        </div>
+        <p class="hint">下载只包含已点击“添加标签 / 保存修改”的记录，不包含尚未提交的编辑框。请定期下载草稿，关闭页面前保存。草稿绑定录音 SHA-256；文件名相同也不能混用。CSV 不会自动覆盖项目文件。</p>
+      </section>
+    </fieldset>
+    <footer>这是人工标注工具，不是异常检测器。毫秒读数不代表毫秒级人工精度；浏览器播放不用于测量实时检测延迟。</footer>
+  </main>
+</body>
+</html>

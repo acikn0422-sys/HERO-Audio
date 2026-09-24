@@ -86,6 +86,9 @@ held-out 示例：
 
 ## 5. 人工独立标注
 
+可使用 [本地音频标注器](manual_audio_annotation.md) 完成回听、波形选区和 CSV 导出；
+它不读取预测，标签仍需人工逐条确认。草稿/录音指纹和 CSV 应一同保留在私有 session 目录。
+
 只回听 `capture.wav`，在 `human-labels.csv` 中填写区间：
 
 ```csv
